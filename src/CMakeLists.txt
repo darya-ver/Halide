@@ -40,6 +40,7 @@ set(HEADER_FILES
     CodeGen_Xtensa.h
     CompilerLogger.h
     ConciseCasts.h
+    ConstantBounds.h
     CPlusPlusMangle.h
     CSE.h
     Debug.h
@@ -210,6 +211,7 @@ set(SOURCE_FILES
     CodeGen_X86.cpp
     CodeGen_Xtensa.cpp
     CompilerLogger.cpp
+    ConstantBounds.cpp
     CPlusPlusMangle.cpp
     CSE.cpp
     Debug.cpp
