@@ -1,15 +1,15 @@
 #include "StmtToViz.h"
-// #include "DependencyGraph.cpp"
+#include "DependencyGraph.cpp"
 #include "DependencyGraph.h"
 #include "Error.h"
-// #include "FindStmtCost.cpp"
+#include "FindStmtCost.cpp"
 #include "FindStmtCost.h"
-// #include "GetStmtHierarchy.cpp"
+#include "GetStmtHierarchy.cpp"
 #include "GetStmtHierarchy.h"
 #include "IROperator.h"
 #include "IRVisitor.h"
 #include "Module.h"
-// #include "ProducerConsumerHierarchy.cpp"
+#include "ProducerConsumerHierarchy.cpp"
 #include "ProducerConsumerHierarchy.h"
 #include "Scope.h"
 #include "Substitute.h"
@@ -30,7 +30,7 @@ namespace Internal {
 
 namespace {
 template<typename T>
-string to_string(T value) {
+string to_string_v(T value) {
     std::ostringstream os;
     os << value;
     return os.str();
@@ -121,7 +121,7 @@ private:
     }
 
     void add_context_rule(const int line_num) {
-        string id = "ContextSpan" + to_string(line_num);
+        string id = "ContextSpan" + to_string_v(line_num);
         content_rule_script_stream += "document.getElementById('" + id +
                                       "').classList.add('hoverContextButton');\n" +
                                       "document.getElementById('" + id + "').disabled = false;\n";
@@ -232,7 +232,7 @@ private:
         tooltipCount++;
         s << "<button id='button" << tooltipCount << "' ";
         s << "aria-describedby='tooltip" << tooltipCount << "' ";
-        s << "class='colorButton CostColor" + to_string(colorRange) + "' role='button' ";
+        s << "class='colorButton CostColor" + to_string_v(colorRange) + "' role='button' ";
         s << "data-bs-toggle='modal' data-bs-target='#stmtHierarchyModal" << popupCount << "' ";
         s << "onmouseover='document.getElementById(\"Cost" << id_count
           << "\").style.background = \"rgba(10,10,10,0.1)\";'";
@@ -258,7 +258,7 @@ private:
         tooltipText << "</span>";
 
         map<string, string> tableRows;
-        tableRows["Depth"] = to_string(depth);
+        tableRows["Depth"] = to_string_v(depth);
 
         tooltipText << tooltip_table(tableRows);
 
@@ -280,8 +280,8 @@ private:
         stringstream tooltipText;
 
         map<string, string> tableRows;
-        tableRows["Depth"] = to_string(depth);
-        tableRows["Computation Cost"] = to_string(computation_range);
+        tableRows["Depth"] = to_string_v(depth);
+        tableRows["Computation Cost"] = to_string_v(computation_range);
         tooltipText << tooltip_table(tableRows);
 
         // tooltip span
@@ -301,8 +301,8 @@ private:
         stringstream tooltipText;
 
         map<string, string> tableRows;
-        tableRows["Depth"] = to_string(depth);
-        tableRows["Data Movement Cost"] = to_string(data_movement_range);
+        tableRows["Depth"] = to_string_v(depth);
+        tableRows["Data Movement Cost"] = to_string_v(data_movement_range);
         tooltipText << tooltip_table(tableRows);
 
         // tooltip span

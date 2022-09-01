@@ -7,7 +7,7 @@ using namespace Halide;
 using namespace Internal;
 
 template<typename T>
-string to_string(T value) {
+string to_string_e(T value) {
     std::ostringstream os;
     os << value;
     return os.str();
@@ -535,16 +535,17 @@ void StmtSizes::visit(const Allocate *op) {
 
     // set allocate stuff
     string type;
-    type += "<span class='stringType'>" + to_string(op->type) + "</span>";
+    
+    type += "<span class='stringType'>" + to_string_e(op->type) + "</span>";
     set_allocation_size(op, type);
 
     for (const auto &extent : op->extents) {
         // TODO: inline these as well if they are variables
         string ss;
         if (extent.as<IntImm>()) {
-            ss += "<span class='intType'>" + to_string(extent) + "</span>";
+            ss += "<span class='intType'>" + to_string_e(extent) + "</span>";
         } else {
-            ss += "<span class='stringType'>" + to_string(extent) + "</span>";
+            ss += "<span class='stringType'>" + to_string_e(extent) + "</span>";
         }
 
         set_allocation_size(op, ss);

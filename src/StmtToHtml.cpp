@@ -201,8 +201,7 @@ private:
                 }
             }
         }
-        stream << "\""
-               << close_span();
+        stream << "\"" << close_span();
     }
 
     void visit(const Variable *op) override {
@@ -389,7 +388,8 @@ private:
         stream << close_expand_button() << " {";
         stream << close_span();
 
-        stream << open_div(op->is_producer ? "ProduceBody Indent" : "ConsumeBody Indent", produce_id);
+        stream << open_div(op->is_producer ? "ProduceBody Indent" : "ConsumeBody Indent",
+                           produce_id);
         print(op->body);
         stream << close_div();
         stream << matched("}");
@@ -979,7 +979,8 @@ public:
         stream << open_expand_button(id);
         stream << open_div("Module");
         stream << open_span("Matched");
-        stream << keyword("module") << " name=" << m.name() << ", target=" << m.target().to_string();
+        stream << keyword("module") << " name=" << m.name()
+               << ", target=" << m.target().to_string();
         stream << close_span();
         stream << close_expand_button();
         stream << " " << matched("{");
@@ -999,13 +1000,14 @@ public:
         scope.pop(m.name());
     }
 
-    StmtToHtml(const string &filename)
-        : id_count(0), context_stack(1, 0) {
+    StmtToHtml(const string &filename) : id_count(0), context_stack(1, 0) {
         stream.open(filename.c_str());
         stream << "<head>";
         stream << "<style type='text/css'>" << css << "</style>\n";
         stream << "<script language='javascript' type='text/javascript'>" + js + "</script>\n";
-        stream << "<link href='http://maxcdn.bootstrapcdn.com/font-awesome/4.1.0/css/font-awesome.min.css' rel='stylesheet'>\n";
+        stream << "<link "
+                  "href='http://maxcdn.bootstrapcdn.com/font-awesome/4.1.0/css/"
+                  "font-awesome.min.css' rel='stylesheet'>\n";
         stream << "<script src='http://code.jquery.com/jquery-1.10.2.js'></script>\n";
         stream << "</head>\n <body>\n";
     }
@@ -1013,8 +1015,10 @@ public:
     ~StmtToHtml() override {
         stream << "<script>\n"
                << "$( '.Matched' ).each( function() {\n"
-               << "    this.onmouseover = function() { $('.Matched[id^=' + this.id.split('-')[0] + '-]').addClass('Highlight'); }\n"
-               << "    this.onmouseout = function() { $('.Matched[id^=' + this.id.split('-')[0] + '-]').removeClass('Highlight'); }\n"
+               << "    this.onmouseover = function() { $('.Matched[id^=' + this.id.split('-')[0] + "
+                  "'-]').addClass('Highlight'); }\n"
+               << "    this.onmouseout = function() { $('.Matched[id^=' + this.id.split('-')[0] + "
+                  "'-]').removeClass('Highlight'); }\n"
                << "} );\n"
                << "</script>\n";
         stream << "</body>";
