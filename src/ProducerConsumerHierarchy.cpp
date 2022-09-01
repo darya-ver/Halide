@@ -220,7 +220,7 @@ string StmtSizes::string_span(string varName) const {
     return "<span class='stringType'>" + varName + "</span>";
 }
 string StmtSizes::int_span(int64_t intVal) const {
-    return "<span class='intType'>" + to_string(intVal) + "</span>";
+    return "<span class='intType'>" + to_string_e(intVal) + "</span>";
 }
 
 void StmtSizes::bubble_up(const IRNode *from, const IRNode *to, string loopIterator = "") {
@@ -910,8 +910,8 @@ void ProducerConsumerHierarchy::generate_computation_cost_div(const IRNode *op) 
     stringstream s;
 
     map<string, string> tableRows;
-    tableRows["Depth"] = to_string(depth);
-    tableRows["Computation Cost"] = to_string(computation_range);
+    tableRows["Depth"] = to_string_e(depth);
+    tableRows["Computation Cost"] = to_string_e(computation_range);
     string tooltipText = tooltip_table(tableRows);
 
     // tooltip span
@@ -940,7 +940,7 @@ void ProducerConsumerHierarchy::generate_memory_cost_div(const IRNode *op) {
 
     map<string, string> tableRows;
     tableRows["Depth"] = to_string(depth);
-    tableRows["Data Movement Cost"] = to_string(data_movement_range);
+    tableRows["Data Movement Cost"] = to_string_e(data_movement_range);
     string tooltipText = tooltip_table(tableRows);
 
     // tooltip span
@@ -950,7 +950,7 @@ void ProducerConsumerHierarchy::generate_memory_cost_div(const IRNode *op) {
     html += tooltipText;
     html += "</span>";
 
-    string className = "memory-cost-div CostColor" + to_string(data_movement_range);
+    string className = "memory-cost-div CostColor" + to_string_e(data_movement_range);
     html += "<div id='prodConsButton" + std::to_string(prodConsTooltipCount) + "' ";
     html += "aria-describedby='prodConsTooltip" + std::to_string(prodConsTooltipCount) + "' ";
     html += "class='" + className + "'>";
@@ -967,7 +967,7 @@ string ProducerConsumerHierarchy::color_button(int colorRange) {
     prodConsTooltipCount++;
     s << "<button id='prodConsButton" << prodConsTooltipCount << "' ";
     s << "aria-describedby='prodConsTooltip" << prodConsTooltipCount << "' ";
-    s << "class='prodConsColorButton CostColor" + to_string(colorRange) + "' role='button' ";
+    s << "class='prodConsColorButton CostColor" + to_string_e(colorRange) + "' role='button' ";
     s << ">";
     s << "</button>";
 
@@ -982,8 +982,8 @@ string ProducerConsumerHierarchy::computation_button(const IRNode *op) {
     s << color_button(computation_range);
 
     map<string, string> tableRows;
-    tableRows["Depth"] = to_string(depth);
-    tableRows["Computation Cost"] = to_string(computation_range);
+    tableRows["Depth"] = to_string_e(depth);
+    tableRows["Computation Cost"] = to_string_e(computation_range);
     string tooltipText = tooltip_table(tableRows);
 
     // tooltip span
@@ -1002,8 +1002,8 @@ string ProducerConsumerHierarchy::data_movement_button(const IRNode *op) {
     s << color_button(data_movement_range);
 
     map<string, string> tableRows;
-    tableRows["Depth"] = to_string(depth);
-    tableRows["Data Movement Cost"] = to_string(data_movement_range);
+    tableRows["Depth"] = to_string_e(depth);
+    tableRows["Data Movement Cost"] = to_string_e(data_movement_range);
     string tooltipText = tooltip_table(tableRows);
 
     // tooltip span
@@ -1035,7 +1035,7 @@ void ProducerConsumerHierarchy::visit_function(const LoweredFunc &func) {
     open_box_div("FunctionBox", nullptr);
 
     functionCount++;
-    string anchorName = "loweredFunc" + to_string(functionCount);
+    string anchorName = "loweredFunc" + to_string_e(functionCount);
 
     string header = "<span id='" + func.name + "'><h4>" + "Func: " + func.name + "</h4></span>";
 
@@ -1148,13 +1148,13 @@ void ProducerConsumerHierarchy::visit(const IfThenElse *op) {
 
         // TODO: inline condition
         string condition;
-        condition += to_string(op->condition);
+        condition += to_string_e(op->condition);
 
         // make condition smaller if it's too big
         if (condition.size() > MAX_CONDITION_LENGTH) {
             condition = "";
             condition += "... ";
-            condition += info_tooltip(to_string(op->condition), "conditionTooltip");
+            condition += info_tooltip(to_string_e(op->condition), "conditionTooltip");
         }
 
         ifHeader += condition;
@@ -1226,8 +1226,8 @@ void ProducerConsumerHierarchy::visit(const Store *op) {
 
     map<string, string> tableRows;
 
-    tableRows["Vector Size"] = to_string(op->index.type().lanes());
-    tableRows["Bit Size"] = to_string(op->index.type().bits());
+    tableRows["Vector Size"] = to_string_e(op->index.type().lanes());
+    tableRows["Bit Size"] = to_string_e(op->index.type().bits());
 
     header += info_tooltip(tooltip_table(tableRows));
 
@@ -1260,8 +1260,8 @@ void ProducerConsumerHierarchy::visit(const Load *op) {
         tableRows["Variable Type"] = "global var";
     }
 
-    tableRows["Bit Size"] = to_string(op->index.type().bits());
-    tableRows["Vector Size"] = to_string(op->index.type().lanes());
+    tableRows["Bit Size"] = to_string_e(op->index.type().bits());
+    tableRows["Vector Size"] = to_string_e(op->index.type().lanes());
 
     if (op->param.defined()) {
         tableRows["Parameter"] = op->param.name();
@@ -1313,25 +1313,25 @@ void ProducerConsumerHierarchy::visit(const Allocate *op) {
     tableRows["Memory Type"] = get_memory_type(op->memory_type);
 
     if (!is_const_one(op->condition)) {
-        tableRows["Condition"] = to_string(op->condition);
+        tableRows["Condition"] = to_string_e(op->condition);
     }
     if (op->new_expr.defined()) {
         internal_error << "\n"
                        << "ProducerConsumerHierarchy: Allocate " << op->name
                        << " `op->new_expr.defined()` is not supported.\n\n";
 
-        tableRows["New Expr"] = to_string(op->new_expr);
+        tableRows["New Expr"] = to_string_e(op->new_expr);
     }
     if (!op->free_function.empty()) {
         internal_error << "\n"
                        << "ProducerConsumerHierarchy: Allocate " << op->name
                        << " `!op->free_function.empty()` is not supported.\n\n";
 
-        tableRows["Free Function"] = to_string(op->free_function);
+        tableRows["Free Function"] = to_string_e(op->free_function);
     }
 
-    tableRows["Bit Size"] = to_string(op->type.bits());
-    tableRows["Vector Size"] = to_string(op->type.lanes());
+    tableRows["Bit Size"] = to_string_e(op->type.bits());
+    tableRows["Vector Size"] = to_string_e(op->type.lanes());
 
     header += info_tooltip(tooltip_table(tableRows));
 

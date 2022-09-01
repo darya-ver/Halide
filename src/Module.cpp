@@ -18,10 +18,14 @@
 #include "LLVM_Runtime_Linker.h"
 #include "Pipeline.h"
 #include "PythonExtensionGen.h"
+
+// My Stuff
+#include "DependencyGraph.cpp"
+#include "FindStmtCost.cpp"
+#include "GetStmtHierarchy.cpp"
+#include "ProducerConsumerHierarchy.cpp"
 #include "StmtToHtml.cpp"
-// #include "StmtToHtml.h"
 #include "StmtToViz.cpp"
-// #include "StmtToViz.h"
 
 namespace Halide {
 namespace Internal {

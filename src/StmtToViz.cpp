@@ -1,16 +1,8 @@
 #include "StmtToViz.h"
-#include "DependencyGraph.cpp"
-#include "DependencyGraph.h"
 #include "Error.h"
-#include "FindStmtCost.cpp"
-#include "FindStmtCost.h"
-#include "GetStmtHierarchy.cpp"
-#include "GetStmtHierarchy.h"
 #include "IROperator.h"
 #include "IRVisitor.h"
 #include "Module.h"
-#include "ProducerConsumerHierarchy.cpp"
-#include "ProducerConsumerHierarchy.h"
 #include "Scope.h"
 #include "Substitute.h"
 #include "Util.h"
@@ -20,6 +12,15 @@
 #include <iostream>
 #include <iterator>
 #include <sstream>
+
+// #include "ProducerConsumerHierarchy.cpp"
+// #include "ProducerConsumerHierarchy.h"
+// #include "FindStmtCost.cpp"
+// #include "FindStmtCost.h"
+// #include "GetStmtHierarchy.cpp"
+// #include "GetStmtHierarchy.h"
+// #include "DependencyGraph.cpp"
+// #include "DependencyGraph.h"
 
 #define PRINT_HIERARCHY false
 #define PRINT_DEPENDENCIES false
