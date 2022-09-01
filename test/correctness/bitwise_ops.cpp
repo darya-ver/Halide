@@ -1,7 +1,8 @@
 #include "Halide.h"
 #include <stdio.h>
 
-namespace {
+using namespace Halide;
+using namespace Halide::Internal;
 
 class Blur3x3 : public Halide::Generator<Blur3x3> {
  public:
@@ -31,9 +32,27 @@ class Blur3x3 : public Halide::Generator<Blur3x3> {
   }
 };
 
-}  // namespace
+int main(int argc, char **argv) {
+    GeneratorContext context(get_jit_target_from_environment());
 
-HALIDE_REGISTER_GENERATOR(Blur3x3, blur3x3)
+        auto gen = context.create<Blur3x3>();
+//        gen->inner_compute_at.set(LoopLevel::root());
+//        gen->apply();
+
+//        Func outer("outer");
+//        outer(x) = gen->inner(x) + trunc(cos(x) * 1000.0f);
+
+//        CheckLoopLevels::lower_and_check(outer,
+//                                         /* inner loop level */ "inner.s0.x",
+//                                         /* outer loop level */ "outer.s0.x");
+//
+
+    printf("Success!\n");
+    return 0;
+}
+
+
+//HALIDE_REGISTER_GENERATOR(Blur3x3, blur3x3)
 
 
 
