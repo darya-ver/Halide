@@ -1,3 +1,4 @@
+#include "GenGen.cpp"
 #include "Halide.h"
 #include <stdio.h>
 
@@ -5,62 +6,39 @@ using namespace Halide;
 using namespace Halide::Internal;
 
 class Blur3x3 : public Halide::Generator<Blur3x3> {
- public:
-  Input<Buffer<uint16_t, 2>> input{"input"};
-  Output<Buffer<uint16_t, 2>> blur_y{"blur_y"};
+public:
+    Input<Buffer<uint16_t, 2>> input{"input"};
+    Output<Buffer<uint16_t, 2>> blur_y{"blur_y"};
 
-  void generate() {
-    Func blur_x("blur_x");
-    Var x("x"), y("y"), xi("xi"), yi("yi");
+    void generate() {
+        Func blur_x("blur_x");
+        Var x("x"), y("y"), xi("xi"), yi("yi");
 
-    // The algorithm
-    blur_x(x, y) = (input(x, y) + input(x + 1, y) + input(x + 2, y)) / 3;
-    blur_y(x, y) = (blur_x(x, y) + blur_x(x, y + 1) + blur_x(x, y + 2)) / 3;
+        // The algorithm
+        blur_x(x, y) = (input(x, y) + input(x + 1, y) + input(x + 2, y)) / 3;
+        blur_y(x, y) = (blur_x(x, y) + blur_x(x, y + 1) + blur_x(x, y + 2)) / 3;
 
-    // CPU schedule.
-    // Compute blur_x as needed at each vector of the output.
-    // Halide will store blur_x in a circular buffer so its
-    // results can be re-used.
-    blur_y.split(y, y, yi, 32).parallel(y).vectorize(x, 16);
+        // CPU schedule.
+        // Compute blur_x as needed at each vector of the output.
+        // Halide will store blur_x in a circular buffer so its
+        // results can be re-used.
+        blur_y.split(y, y, yi, 32).parallel(y).vectorize(x, 16);
 
-    blur_y.dim(0).set_min(0);
-    blur_y.dim(0).set_extent(1920);
-    blur_y.dim(1).set_min(0);
-    blur_y.dim(1).set_extent(1080);
+        blur_y.dim(0).set_min(0);
+        blur_y.dim(0).set_extent(1920);
+        blur_y.dim(1).set_min(0);
+        blur_y.dim(1).set_extent(1080);
 
-    blur_x.store_at(blur_y, y).compute_at(blur_y, x).vectorize(x, 16);
-  }
+        blur_x.store_at(blur_y, y).compute_at(blur_y, x).vectorize(x, 16);
+    }
 };
 
-int main(int argc, char **argv) {
-    GeneratorContext context(get_jit_target_from_environment());
-
-        auto gen = context.create<Blur3x3>();
-//        gen->inner_compute_at.set(LoopLevel::root());
-//        gen->apply();
-
-//        Func outer("outer");
-//        outer(x) = gen->inner(x) + trunc(cos(x) * 1000.0f);
-
-//        CheckLoopLevels::lower_and_check(outer,
-//                                         /* inner loop level */ "inner.s0.x",
-//                                         /* outer loop level */ "outer.s0.x");
-//
-
-    printf("Success!\n");
-    return 0;
-}
-
-
-//HALIDE_REGISTER_GENERATOR(Blur3x3, blur3x3)
-
-
-
+HALIDE_REGISTER_GENERATOR(Blur3x3, blur3x3)
 
 //
-//using namespace Halide;
+// using namespace Halide;
 //
-//int main(int argc, char **argv) {
+// int main(int argc, char **argv) {
 //    Buffer<uint32_t> input(256);
 //    for (int i = 0; i < 256; i++) {
 //        input(i) = rand();
