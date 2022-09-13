@@ -453,7 +453,6 @@ SOURCE_FILES = \
   DebugToFile.cpp \
   Definition.cpp \
   Deinterleave.cpp \
-  DependencyGraph.cpp \
   Derivative.cpp \
   DerivativeUtils.cpp \
   DeviceArgument.cpp \
@@ -477,6 +476,7 @@ SOURCE_FILES = \
   FuseGPUThreadLoops.cpp \
   FuzzFloatStores.cpp \
   Generator.cpp \
+  GetAssemblyInfoViz.cpp \
   GetStmtHierarchy.cpp \
   HexagonOffload.cpp \
   HexagonOptimize.cpp \
@@ -634,7 +634,6 @@ HEADER_FILES = \
   DebugToFile.h \
   Definition.h \
   Deinterleave.h \
-  DependencyGraph.h \
   Derivative.h \
   DerivativeUtils.h \
   DeviceAPI.h \

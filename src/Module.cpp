@@ -23,6 +23,7 @@
 // My Stuff
 #include "DependencyGraph.cpp"
 #include "FindStmtCost.cpp"
+#include "GetAssemblyInfoViz.cpp"
 #include "GetStmtHierarchy.cpp"
 #include "ProducerConsumerHierarchy.cpp"
 #include "StmtToViz.cpp"
@@ -577,11 +578,6 @@ void Module::compile(const std::map<OutputFileType, std::string> &output_files) 
                  << "\n";
         Internal::print_to_html(output_files.at(OutputFileType::stmt_html), *this);
     }
-    if (contains(output_files, OutputFileType::stmt_viz)) {
-        debug(1) << "Module.compile(): stmt_viz " << output_files.at(OutputFileType::stmt_viz)
-                 << "\n";
-        Internal::print_to_viz(output_files.at(OutputFileType::stmt_viz), *this);
-    }
 
     // If there are submodules, recursively lower submodules to
     // buffers on a copy of the module being compiled, then compile
@@ -657,6 +653,13 @@ void Module::compile(const std::map<OutputFileType, std::string> &output_files) 
             compile_llvm_module_to_llvm_assembly(*llvm_module, *out);
         }
     }
+
+    if (contains(output_files, OutputFileType::stmt_viz)) {
+        debug(1) << "Module.compile(): stmt_viz " << output_files.at(OutputFileType::stmt_viz)
+                 << "\n";
+        Internal::print_to_viz(output_files.at(OutputFileType::stmt_viz), *this);
+    }
+
     if (contains(output_files, OutputFileType::c_header)) {
         debug(1) << "Module.compile(): c_header " << output_files.at(OutputFileType::c_header)
                  << "\n";

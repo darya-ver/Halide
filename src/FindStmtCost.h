@@ -13,23 +13,26 @@ using namespace Halide;
 using namespace Internal;
 using namespace std;
 
+#define NORMAL_NODE_CC 1
+#define NORMAL_NODE_DMC 0
+#define NORMAL_SCALE_FACTOR_DMC 1
 #define DEPTH_COST 3
-#define NUMBER_COST_COLORS 20
-#define LOAD_COST 2
-#define STORE_COST 3
-
+#define LOAD_DM_COST 2
+#define STORE_DM_COST 3
 #define LOAD_LOCAL_VAR_COST 3
 #define LOAD_GLOBAL_VAR_COST 10
+
+#define NUMBER_COST_COLORS 20
 
 /*
  * StmtCost struct
  */
 struct StmtCost {
-    int depth;               // per nested loop
-    int computation_cost;    // per line
-    int data_movement_cost;  // per line
-
-    // add other costs later, like integer-ALU cost, float-ALU cost, memory cost, etc.
+    int depth;                         // per nested loop
+    int computation_cost_inclusive;    // per line
+    int data_movement_cost_inclusive;  // per line
+    int computation_cost_exclusive;    // per line
+    int data_movement_cost_exclusive;  // per line
 };
 
 /*
@@ -66,15 +69,19 @@ public:
     void generate_costs(const Module &m);
     void generate_costs(const Stmt &stmt);
 
+    // generates tooltip information based on given node
+    string generate_computation_cost_tooltip(const IRNode *op, bool inclusive, string extraNote);
+    string generate_data_movement_cost_tooltip(const IRNode *op, bool inclusive, string extraNote);
+
     // returns the range of the node's cost based on the other nodes' costs
-    int get_computation_color_range(const IRNode *op) const;
-    int get_data_movement_color_range(const IRNode *op) const;
+    int get_computation_color_range(const IRNode *op, bool inclusive) const;
+    int get_data_movement_color_range(const IRNode *op, bool inclusive) const;
 
-    // calculates the total costs and depth of a node
-    int get_depth(const IRNode *node) const;
-    int get_calculated_computation_cost(const IRNode *node) const;
-    int get_data_movement_cost(const IRNode *node) const;
+    // for when blocks are collapsed in code viz
+    int get_combined_computation_color_range(const IRNode *op) const;
+    int get_combined_data_movement_color_range(const IRNode *op) const;
 
+    // is local (defined in Allocate block) or not
     bool is_local_variable(const string &name) const;
 
 private:
@@ -82,27 +89,44 @@ private:
     CostPreProcessor cost_preprocessor;                 // for Atomic and Acquire
     int current_loop_depth = 0;                         // stores current loop depth level
     vector<string> allocate_variables;                  // stores all allocate variables
-    int max_computation_cost = 0;                       // stores the maximum computation cost
-    int max_data_movement_cost = 0;                     // stores the maximum data movement cost
+
+    int max_computation_cost_inclusive = 0;    // stores the maximum computation cost (inclusive)
+    int max_data_movement_cost_inclusive = 0;  // stores the maximum data movement cost (inclusive)
+    int max_computation_cost_exclusive = 0;    // stores the maximum computation cost (exclusive)
+    int max_data_movement_cost_exclusive = 0;  // stores the maximum data movement cost (exclusive)
 
     // starts the traversal based on Module
     void traverse(const Module &m);
 
-    // gets/sets cost from `stmt_cost` map
-    int get_computation_cost(const IRNode *node) const;
-    void set_costs(const IRNode *node, int computation_cost, int data_movement_cost);
+    // calculates the total costs and depth of a node
+    int get_depth(const IRNode *node) const;
+    int get_computation_cost(const IRNode *node, bool inclusive) const;
+    int get_data_movement_cost(const IRNode *node, bool inclusive) const;
+    int get_cost(const IRNode *node, bool inclusive, bool isComputation) const;
+    int get_if_node_cost(const IRNode *op, bool inclusive, bool isComputation) const;
 
-    // calculates cost of a single StmtCost object
-    int calculate_cost(StmtCost cost_node) const;
+    // get percentages
+    int get_computation_cost_percentage(const IRNode *node, bool inclusive) const;
+    int get_data_movement_cost_percentage(const IRNode *node, bool inclusive) const;
+
+    // gets costs from `stmt_cost` map
+    vector<int> get_costs_children(const IRNode *parent, vector<const IRNode *> children,
+                                   bool inclusive) const;
+
+    // sets costs
+    void set_inclusive_costs(const IRNode *node, vector<const IRNode *> children, int node_cc,
+                             int node_dmc, int scalingFactor_dmc);
+    void set_exclusive_costs(const IRNode *node, vector<const IRNode *> children, int node_cc,
+                             int node_dmc, int scalingFactor_dmc);
 
     // gets max computation cost and max data movement cost
-    void set_max_costs();
+    void set_max_costs(const Module &m);
+
+    // builds the tooltip cost table based on given input table
+    string tooltip_table(vector<pair<string, string>> &table, string extraNote);
 
     // gets scaling factor for Load/Store based on lanes and bits
     int get_scaling_factor(uint8_t bits, uint16_t lanes) const;
-
-    // prints the Node->StmtCost map
-    void print_map(unordered_map<const IRNode *, StmtCost> const &m);
 
     void visit_binary_op(const IRNode *op, const Expr &a, const Expr &b);
 

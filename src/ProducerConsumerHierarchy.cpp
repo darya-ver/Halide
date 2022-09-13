@@ -34,21 +34,15 @@ StmtSize StmtSizes::get_size(const IRNode *node) const {
 
     return it->second;
 }
-string StmtSizes::get_allocation_size(const IRNode *node, const string &name) const {
-    StmtSize size = get_size(node);
 
-    auto it = size.allocates.find(name);
-    if (it == size.allocates.end()) {
-        internal_error << "\n"
-                       << print_node(node) << "\n"
-                       << "StmtSizes::get_allocation_size - " << name << " not found in allocates\n"
-                       << "\n\n";
-    }
-    return it->second;
+string StmtSizes::string_span(string varName) const {
+    return "<span class='stringType'>" + varName + "</span>";
+}
+string StmtSizes::int_span(int64_t intVal) const {
+    return "<span class='intType'>" + to_string(intVal) + "</span>";
 }
 
 void StmtSizes::traverse(const Module &m) {
-    module_name = m.name();
 
     // recursively traverse all submodules
     for (const auto &s : m.submodules()) {
@@ -57,18 +51,9 @@ void StmtSizes::traverse(const Module &m) {
 
     // traverse all functions
     for (const auto &f : m.functions()) {
-        get_function_arguments(f);
-
-        main_function_bodies[f.name] = f.body;
+        function_names.push_back(f.name);
+        f.body.accept(this);
     }
-
-    // start traversing the main function
-    auto it = main_function_bodies.find(module_name);
-    if (it == main_function_bodies.end()) {
-        internal_error << "\n\n\n"
-                       << "StmtSizes::traverse - main function not found\n\n\n";
-    }
-    it->second.accept(this);
 }
 
 string StmtSizes::get_simplified_string(string a, string b, string op) {
@@ -92,379 +77,34 @@ string StmtSizes::get_simplified_string(string a, string b, string op) {
     }
 }
 
-void StmtSizes::get_function_arguments(const LoweredFunc &op) {
-    for (size_t i = 0; i < op.args.size(); i++) {
-        arguments.push_back(op.args[i].name);
-    }
-}
-
-string StmtSizes::print_sizes() const {
-    stringstream ss;
-    for (const auto &it : stmt_sizes) {
-        ss << it.first << ":" << endl;
-        for (const auto &it2 : it.second.produces) {
-            ss << "    produces " << it2.first << ": " << it2.second << endl;
-        }
-        for (const auto &it2 : it.second.consumes) {
-            ss << "    consumes " << it2.first << ": " << it2.second << endl;
-        }
-    }
-    return ss.str();
-}
-string StmtSizes::print_produce_sizes(StmtSize &stmtSize) const {
-    stringstream ss;
-    for (const auto &it : stmtSize.produces) {
-        ss << "produces:" << it.first << ": " << it.second << "<br>";
-    }
-    return ss.str();
-}
-string StmtSizes::print_consume_sizes(StmtSize &stmtSize) const {
-    stringstream ss;
-    for (const auto &it : stmtSize.consumes) {
-        ss << "consumes:" << it.first << ": " << it.second << "<br>";
-    }
-    return ss.str();
-}
-
-void StmtSizes::set_produce_size(const IRNode *node, string produce_var, string produce_size) {
+void StmtSizes::set_write_size(const IRNode *node, string write_var, string write_size) {
     auto it = stmt_sizes.find(node);
     if (it == stmt_sizes.end()) {
         stmt_sizes[node] = StmtSize();
     }
-    stmt_sizes[node].produces[produce_var] = produce_size;
+    stmt_sizes[node].writes[write_var] = write_size;
 }
-void StmtSizes::set_consume_size(const IRNode *node, string consume_var, string consume_size) {
+void StmtSizes::set_read_size(const IRNode *node, string read_var, string read_size) {
     auto it = stmt_sizes.find(node);
     if (it == stmt_sizes.end()) {
         stmt_sizes[node] = StmtSize();
     }
-    stmt_sizes[node].consumes[consume_var] = consume_size;
-}
-void StmtSizes::set_allocation_size_old(const IRNode *node, string allocate_var,
-                                        string allocate_size) {
-    auto it = stmt_sizes.find(node);
-
-    // error if size found and allocate_var already exists
-    if (it != stmt_sizes.end()) {
-        auto it2 = it->second.allocates.find(allocate_var);
-        if (it2 != it->second.allocates.end()) {
-            internal_error << "\n"
-                           << print_node(node) << "\n"
-                           << "StmtSizes::set_allocation_size - " << allocate_var
-                           << " already found in allocates\n"
-                           << "\n\n";
-        }
-    }
-
-    // if size not found, create new entry
-    else {
-        stmt_sizes[node] = StmtSize();
-    }
-
-    // set allocation size
-    stmt_sizes[node].allocates[allocate_var] = allocate_size;
-}
-void StmtSizes::set_for_loop_size(const IRNode *node, string for_loop_size) {
-    auto it = stmt_sizes.find(node);
-    if (it == stmt_sizes.end()) {
-        stmt_sizes[node] = StmtSize();
-    }
-    stmt_sizes[node].forLoopSize = for_loop_size;
-}
-void StmtSizes::set_allocation_size(const IRNode *node, string allocate_size) {
-    auto it = stmt_sizes.find(node);
-    if (it == stmt_sizes.end()) {
-        stmt_sizes[node] = StmtSize();
-    }
-    stmt_sizes[node].allocationSizes.push_back(allocate_size);
-}
-
-bool StmtSizes::in_producer(const string &name) const {
-    // check if name is in curr_producer_names
-    for (const auto &it : curr_producer_names) {
-        if (it == name) {
-            return true;
-        }
-    }
-    return false;
-}
-bool StmtSizes::in_consumer(const string &name) const {
-    // check if name is in curr_consumer_names
-    for (const auto &it : curr_consumer_names) {
-        if (it == name) {
-            return true;
-        }
-    }
-    return false;
-}
-void StmtSizes::remove_producer(const string &name) {
-    // remove name from curr_producer_names
-    for (size_t i = 0; i < curr_producer_names.size(); i++) {
-        if (curr_producer_names[i] == name) {
-            curr_producer_names.erase(curr_producer_names.begin() + i);
-            return;
-        }
-    }
-}
-void StmtSizes::remove_consumer(const string &name) {
-    // remove name from curr_consumer_names
-    for (size_t i = 0; i < curr_consumer_names.size(); i++) {
-        if (curr_consumer_names[i] == name) {
-            curr_consumer_names.erase(curr_consumer_names.begin() + i);
-            return;
-        }
-    }
-}
-
-string StmtSizes::string_span(string varName) const {
-    return "<span class='stringType'>" + varName + "</span>";
-}
-string StmtSizes::int_span(int64_t intVal) const {
-    return "<span class='intType'>" + to_string_e(intVal) + "</span>";
-}
-
-void StmtSizes::bubble_up(const IRNode *from, const IRNode *to, string loopIterator = "") {
-    StmtSize fromSize = get_size(from);
-    StmtSize toSize = get_size(to);
-
-    // produce sizes
-    for (const auto &produce_var : fromSize.produces) {
-        string fromVar = produce_var.first;
-        string fromProduceSize = produce_var.second;
-
-        // if there's loop iterator, add it to the produce var name
-        if (loopIterator != "") {
-            string toProduceSize = get_simplified_string(loopIterator, fromProduceSize, "*");
-            set_produce_size(to, fromVar, toProduceSize);
-        } else {
-            // check if fromVar is in toSize.consumes
-            auto it = toSize.produces.find(fromVar);
-            if (it != toSize.produces.end()) {
-                string currProduceSize = it->second;
-                string toProduceSize = get_simplified_string(currProduceSize, fromProduceSize, "+");
-
-                set_produce_size(to, fromVar, toProduceSize);
-            } else {
-                set_produce_size(to, fromVar, fromProduceSize);
-            }
-        }
-    }
-
-    // consume sizes
-    for (const auto &consume_var : fromSize.consumes) {
-        string fromVar = consume_var.first;
-        string fromConsumeSize = consume_var.second;
-
-        // if there's loop iterator, add it to the consume var name
-        if (loopIterator != "") {
-            string toConsumeSize = get_simplified_string(loopIterator, fromConsumeSize, "*");
-            set_consume_size(to, fromVar, toConsumeSize);
-        } else {
-            // check if fromVar is in toSize.consumes
-            auto it = toSize.consumes.find(fromVar);
-            if (it != toSize.consumes.end()) {
-                string currConsumeSize = it->second;
-                string toConsumeSize = get_simplified_string(currConsumeSize, fromConsumeSize, "+");
-
-                set_consume_size(to, fromVar, toConsumeSize);
-            } else {
-                set_consume_size(to, fromVar, fromConsumeSize);
-            }
-        }
-    }
-
-    // mainFunctionCalls
-    for (const auto &mainFunctionCall : fromSize.mainFunctionCalls) {
-        // only add if not already in toSize.mainFunctionCalls
-        if (!std::count(toSize.mainFunctionCalls.begin(), toSize.mainFunctionCalls.end(),
-                        mainFunctionCall)) {
-            toSize.mainFunctionCalls.push_back(mainFunctionCall);
-        }
-    }
-}
-
-void StmtSizes::visit(const Call *op) {
-    for (size_t i = 0; i < op->args.size(); i++) {
-        Expr arg = op->args[i];
-        arg.accept(this);
-        bubble_up(arg.get(), op);
-    }
-}
-void StmtSizes::visit(const Variable *op) {
-    // if op->name starts with "::", remove "::"
-    string varName = op->name;
-    if (varName[0] == ':' && varName[1] == ':') {
-        varName = varName.substr(2);
-    }
-
-    auto it = main_function_bodies.find(varName);
-    if (it != main_function_bodies.end()) {
-        StmtSize size = StmtSize();
-        size.mainFunctionCalls.push_back(op->name);
-        stmt_sizes[op] = size;
-
-        it->second.accept(this);
-
-        bubble_up(it->second.get(), op);
-    }
-}
-void StmtSizes::visit(const LetStmt *op) {
-    op->value.accept(this);
-    op->body.accept(this);
-
-    bubble_up(op->value.get(), op);
-    bubble_up(op->body.get(), op);
-}
-void StmtSizes::visit(const ProducerConsumer *op) {
-    if (op->is_producer) {
-        curr_producer_names.push_back(op->name);
-    } else {
-        curr_consumer_names.push_back(op->name);
-    }
-
-    op->body.accept(this);
-
-    bubble_up(op->body.get(), op);
-
-    // remove name from curr_producer_names or curr_consumer_names
-    if (op->is_producer) {
-        remove_producer(op->name);
-    } else {
-        remove_consumer(op->name);
-    }
-}
-string StmtSizes::get_loop_iterator(const For *op) const {
-    Expr min = op->min;
-    Expr extent = op->extent;
-
-    string loopIterator;
-
-    // check if min and extend are of type IntImm
-    if (min.node_type() == IRNodeType::IntImm && extent.node_type() == IRNodeType::IntImm) {
-        int64_t minValue = min.as<IntImm>()->value;
-        int64_t extentValue = extent.as<IntImm>()->value;
-        uint16_t range = uint16_t(extentValue - minValue);
-        loopIterator = int_span(range);
-    }
-
-    else if (min.node_type() == IRNodeType::IntImm && extent.node_type() == IRNodeType::Variable) {
-        int64_t minValue = min.as<IntImm>()->value;
-        string minName = int_span(minValue);
-        string extentName = string_span(extent.as<Variable>()->name);
-
-        // TODO: inline variable for extentName
-
-        if (minValue == 0) {
-            loopIterator = extentName;
-        } else {
-            loopIterator = "(" + extentName + " - " + minName + ")";
-        }
-    }
-
-    else if (min.node_type() == IRNodeType::IntImm && extent.node_type() == IRNodeType::Add) {
-        int64_t minValue = min.as<IntImm>()->value;
-        string minName = int_span(minValue);
-        string extentName = "(";
-
-        // deal with a
-        if (extent.as<Add>()->a.node_type() == IRNodeType::IntImm) {
-            int64_t extentValue = extent.as<Add>()->a.as<IntImm>()->value;
-            extentName += int_span(extentValue);
-        } else if (extent.as<Add>()->a.node_type() == IRNodeType::Variable) {
-            extentName += string_span(extent.as<Add>()->a.as<Variable>()->name);
-        } else {
-            internal_error << "\n"
-                           << "In for loop: " << op->name << "\n"
-                           << print_node(extent.as<Add>()->a.get()) << "\n"
-                           << "StmtSizes::visit(const For *op): add->a isn't IntImm or Variable - "
-                              "can't generate ProdCons hierarchy yet. \n\n";
-        }
-
-        extentName += "+";
-
-        // deal with b
-        if (extent.as<Add>()->b.node_type() == IRNodeType::IntImm) {
-            int64_t extentValue = extent.as<Add>()->b.as<IntImm>()->value;
-            extentName += int_span(extentValue);
-        } else if (extent.as<Add>()->b.node_type() == IRNodeType::Variable) {
-            extentName += string_span(extent.as<Add>()->b.as<Variable>()->name);
-        } else {
-            internal_error << "\n"
-                           << "In for loop: " << op->name << "\n"
-                           << print_node(extent.as<Add>()->b.get()) << "\n"
-                           << "StmtSizes::visit(const For *op): add->b isn't IntImm or Variable - "
-                              "can't generate ProdCons hierarchy yet. \n\n";
-        }
-        extentName += ")";
-
-        if (minValue == 0) {
-            loopIterator = extentName;
-        } else {
-            loopIterator = "(" + extentName + " - " + minName + ")";
-        }
-
-    }
-
-    else {
-        internal_error
-            << "\n"
-            << "In for loop: " << op->name << "\n"
-            << print_node(op->min.get()) << "\n"
-            << print_node(op->extent.get()) << "\n"
-            << "StmtSizes::visit(const For *op): min and extent are not of type (IntImm) "
-               "or (IntImm & Variable) or (IntImm & Add) - "
-               "can't generate ProdCons hierarchy yet. \n\n";
-    }
-
-    return loopIterator;
-}
-void StmtSizes::visit(const For *op) {
-    op->body.accept(this);
-    StmtSize bodySize = get_size(op->body.get());
-
-    // don't do anything if body is empty
-    if (bodySize.empty()) {
-        return;
-    }
-
-    string loopIterator = get_loop_iterator(op);
-
-    bubble_up(op->body.get(), op, loopIterator);
-
-    set_for_loop_size(op, loopIterator);
+    stmt_sizes[node].reads[read_var] = read_size;
 }
 void StmtSizes::visit(const Store *op) {
 
     // TODO: is this correct? should i be getting it from `index`?
     uint16_t lanes = op->index.type().lanes();
 
-    if (in_producer(op->name)) {
-        set_produce_size(op, op->name, int_span(lanes));
-    }
+    set_write_size(op, op->name, int_span(lanes));
 
     // empty curr_load_values
     curr_load_values.clear();
-    curr_loads.clear();
     op->value.accept(this);
 
     // set consume (for now, read values)
     for (const auto &load_var : curr_load_values) {
-        set_consume_size(op, load_var.first, int_span(load_var.second));
-    }
-
-    // iterate through curr_loads to get unique loads
-    for (const auto &load_var : curr_loads) {
-        string vectorName = load_var.first;
-        vector<set<int>> loadValues = load_var.second;
-        set<int> finalLoadValuesUnique;
-
-        for (const set<int> &loadValueSet : loadValues) {
-            finalLoadValuesUnique.insert(loadValueSet.begin(), loadValueSet.end());
-        }
-
-        if (SHOW_UNIQUE_LOADS) {
-            set_consume_size(op, vectorName + "_unique", int_span(finalLoadValuesUnique.size()));
-        }
+        set_read_size(op, load_var.first, int_span(load_var.second));
     }
 }
 void StmtSizes::add_load_value(const string &name, const int lanes) {
@@ -475,90 +115,12 @@ void StmtSizes::add_load_value(const string &name, const int lanes) {
         curr_load_values[name] += lanes;
     }
 }
-void StmtSizes::add_load_value_unique_loads(const string &name, set<int> &load_values) {
-    curr_loads[name].push_back(load_values);
-}
 void StmtSizes::visit(const Load *op) {
 
-    // see if the variable is in the arguments variable
-    if (std::count(arguments.begin(), arguments.end(), op->name)) {
-        curr_consumer_names.push_back(op->name);
-    }
+    // TODO: make sure this logic is right
+    int lanes = int(op->type.lanes());
 
-    if (in_consumer(op->name)) {
-        // TODO: make sure this logic is right
-        int lanes;
-
-        if (op->index.as<Ramp>()) {
-            lanes = op->index.as<Ramp>()->lanes;
-
-            // calculate unique loads if all args are concrete
-            if (op->index.as<Ramp>()->base.as<IntImm>() &&
-                op->index.as<Ramp>()->stride.as<IntImm>()) {
-                int64_t baseValue = op->index.as<Ramp>()->base.as<IntImm>()->value;
-                int64_t strideValue = op->index.as<Ramp>()->stride.as<IntImm>()->value;
-
-                set<int> load_values;
-                for (int i = baseValue; i < baseValue + (lanes * strideValue); i += strideValue) {
-                    load_values.insert(i);
-                }
-
-                if (SHOW_UNIQUE_LOADS) {
-                    add_load_value_unique_loads(op->name, load_values);
-                }
-            }
-        } else {
-            lanes = int(op->type.lanes());
-        }
-
-        add_load_value(op->name, lanes);
-    }
-}
-void StmtSizes::visit(const Block *op) {
-    op->first.accept(this);
-    if (op->rest.defined()) {
-
-        op->rest.accept(this);
-    }
-
-    bubble_up(op->first.get(), op);
-    if (op->rest.defined()) {
-        bubble_up(op->rest.get(), op);
-    }
-}
-void StmtSizes::visit(const Allocate *op) {
-
-    op->body.accept(this);
-    StmtSize bodySize = get_size(op->body.get());
-
-    bubble_up(op->body.get(), op);
-
-    // set allocate stuff
-    string type;
-    
-    type += "<span class='stringType'>" + to_string_e(op->type) + "</span>";
-    set_allocation_size(op, type);
-
-    for (const auto &extent : op->extents) {
-        // TODO: inline these as well if they are variables
-        string ss;
-        if (extent.as<IntImm>()) {
-            ss += "<span class='intType'>" + to_string_e(extent) + "</span>";
-        } else {
-            ss += "<span class='stringType'>" + to_string_e(extent) + "</span>";
-        }
-
-        set_allocation_size(op, ss);
-    }
-}
-void StmtSizes::visit(const IfThenElse *op) {
-    op->then_case.accept(this);
-    bubble_up(op->then_case.get(), op);
-
-    if (op->else_case.defined()) {
-        op->else_case.accept(this);
-        bubble_up(op->else_case.get(), op);
-    }
+    add_load_value(op->name, lanes);
 }
 
 /*
@@ -568,6 +130,7 @@ string ProducerConsumerHierarchy::generate_producer_consumer_html(const Module &
     pre_processor.generate_sizes(m);
 
     html = "";
+    numOfNodes = 0;
     startModuleTraversal(m);
 
     return html.c_str();
@@ -582,12 +145,6 @@ string ProducerConsumerHierarchy::generate_producer_consumer_html(const Stmt &st
 }
 
 void ProducerConsumerHierarchy::startModuleTraversal(const Module &m) {
-
-    auto it = pre_processor.main_function_bodies.find(pre_processor.module_name);
-    if (it == pre_processor.main_function_bodies.end()) {
-        internal_error << "ProducerConsumerHierarchy::generate_producer_consumer_html - main "
-                          "function not found\n";
-    }
 
     // print main function first
     for (const auto &f : m.functions()) {
@@ -616,6 +173,17 @@ void ProducerConsumerHierarchy::open_box_div(string className, const IRNode *op)
     open_content_div();
 }
 void ProducerConsumerHierarchy::close_box_div() {
+    close_div();  // body div (opened at end of close_header())
+    close_div();  // content div
+    close_div();  // main box div
+}
+void ProducerConsumerHierarchy::open_function_box_div() {
+    html += "<div class='center FunctionBox'";
+    html += ">";
+
+    html += "<div class='functionContent'>";
+}
+void ProducerConsumerHierarchy::close_function_box_div() {
     close_div();  // content div
     close_div();  // main box div
 }
@@ -638,6 +206,22 @@ void ProducerConsumerHierarchy::close_div() {
 void ProducerConsumerHierarchy::open_header(const string &header, string anchorName) {
     open_header_div();
 
+    numOfNodes++;
+
+    // buttons div
+    html += "<div class='collapseExpandButtons'>";
+    // expand button - hidden to start
+    html += "<button id='prodCons" + std::to_string(numOfNodes) +
+            "-show' class='iconButton prodConsToggle' onclick='toggleCollapse(" +
+            std::to_string(numOfNodes) +
+            ")' style='display: none;'><i class='bi "
+            "bi-chevron-bar-down'></i></button>";
+    // collapse button
+    html += "<button id='prodCons" + std::to_string(numOfNodes) +
+            "-hide' class='iconButton prodConsToggle' onclick='toggleCollapse(" +
+            std::to_string(numOfNodes) + ")' ><i class='bi bi-chevron-bar-up'></i></button>";
+    html += "</div>";
+
     open_box_header_title_div();
 
     html += "<span id='" + anchorName + "_viz'>";
@@ -656,45 +240,83 @@ void ProducerConsumerHierarchy::close_header(string anchorName) {
     close_div();  // header table div
     see_code_button_div(anchorName);
     close_div();  // header div
+
+    // open body div
+    html += "<div id='prodCons" + std::to_string(numOfNodes) + "' class='boxBody'>";
 }
-void ProducerConsumerHierarchy::div_header(const string &header, StmtSize &size,
+void ProducerConsumerHierarchy::div_header(const string &header, StmtSize *size,
                                            string anchorName) {
 
     open_header(header, anchorName);
 
     // add producer consumer size if size is provided
-    if (!size.empty()) {
-        prod_cons_table(size);
+    if (size != nullptr) {
+        read_write_table(*size);
     }
 
     close_header(anchorName);
 }
+void ProducerConsumerHierarchy::function_div_header(const string &functionName, string anchorName) {
+
+    html += "<div class='functionHeader'>";
+
+    html += "<span id='" + functionName + "'>";
+    html += "<span id='" + anchorName + "_viz' style='display: inline-block;'>";
+    html += "<h4 style='margin-bottom: 0px;'> Func: " + functionName + "</h4>";
+    html += "</span>";
+    html += "</span>";
+
+    see_code_button_div(anchorName, false);
+
+    html += "</div>";
+}
+vector<string> ProducerConsumerHierarchy::get_allocation_sizes(const Allocate *op) const {
+    vector<string> sizes;
+
+    string type;
+    type += "<span class='stringType'>" + to_string(op->type) + "</span>";
+    sizes.push_back(type);
+
+    for (const auto &extent : op->extents) {
+        string ss;
+        if (extent.as<IntImm>()) {
+            ss += "<span class='intType'>" + to_string(extent) + "</span>";
+        } else {
+            ss += "<span class='stringType'>" + to_string(extent) + "</span>";
+        }
+
+        sizes.push_back(ss);
+    }
+
+    internal_assert(sizes.size() == op->extents.size() + 1);
+
+    return sizes;
+}
 void ProducerConsumerHierarchy::allocate_div_header(const Allocate *op, const string &header,
-                                                    StmtSize &size, string anchorName) {
+                                                    string anchorName) {
     open_header(header, anchorName);
 
-    vector<string> &allocationSizes = size.allocationSizes;
+    vector<string> allocationSizes = get_allocation_sizes(op);
     allocate_table(allocationSizes);
 
     close_header(anchorName);
 }
 void ProducerConsumerHierarchy::for_loop_div_header(const For *op, const string &header,
-                                                    StmtSize &size, string anchorName) {
+                                                    string anchorName) {
     open_header(header, anchorName);
 
-    string loopSize = pre_processor.get_size(op).forLoopSize;
+    string loopSize = get_loop_iterator(op);
     for_loop_table(loopSize);
 
     close_header(anchorName);
 }
 
-void ProducerConsumerHierarchy::if_tree(const IRNode *op, const string &header, StmtSize &size,
-                                        string anchorName) {
+void ProducerConsumerHierarchy::if_tree(const IRNode *op, const string &header, string anchorName) {
     html += "<li>";
     html += "<span class='tf-nc if-node'>";
 
     open_box_div("IfBox", op);
-    div_header(header, size, anchorName);
+    div_header(header, nullptr, anchorName);
 }
 void ProducerConsumerHierarchy::close_if_tree() {
     close_box_div();
@@ -702,7 +324,7 @@ void ProducerConsumerHierarchy::close_if_tree() {
     html += "</li>";
 }
 
-void ProducerConsumerHierarchy::prod_cons_table(StmtSize &size) {
+void ProducerConsumerHierarchy::read_write_table(StmtSize &size) {
     // open table
     html += "<table class='costTable'>";
 
@@ -719,10 +341,10 @@ void ProducerConsumerHierarchy::prod_cons_table(StmtSize &size) {
 
     html += "</tr>";
 
-    // produces and consumes are empty - add row with values 0
+    // produces and consumes are empty
     if (size.empty()) {
         internal_error << "\n\n"
-                       << "ProducerConsumerHierarchy::prod_cons_table - size is empty"
+                       << "ProducerConsumerHierarchy::read_write_table - size is empty"
                        << "\n";
     }
 
@@ -731,7 +353,7 @@ void ProducerConsumerHierarchy::prod_cons_table(StmtSize &size) {
         vector<string> rows;
 
         // fill in producer variables
-        for (const auto &produce_var : size.produces) {
+        for (const auto &produce_var : size.writes) {
             string ss;
             ss += "<td class='costTableData'>";
             ss += produce_var.first + ": ";
@@ -746,7 +368,7 @@ void ProducerConsumerHierarchy::prod_cons_table(StmtSize &size) {
 
         // fill in consumer variables
         unsigned long rowNum = 0;
-        for (const auto &consume_var : size.consumes) {
+        for (const auto &consume_var : size.reads) {
             string ss;
             ss += "<td class='costTableData'>";
             ss += consume_var.first + ": ";
@@ -770,8 +392,8 @@ void ProducerConsumerHierarchy::prod_cons_table(StmtSize &size) {
         }
 
         // pad row with empty calls for consume
-        rowNum = size.consumes.size();
-        while (rowNum < size.produces.size()) {
+        rowNum = size.reads.size();
+        while (rowNum < size.writes.size()) {
             string sEmpty;
             sEmpty += "<td class='costTableData'>";
             sEmpty += "</td>";
@@ -864,13 +486,13 @@ void ProducerConsumerHierarchy::for_loop_table(string loop_size) {
     html += "</table>";
 }
 
-void ProducerConsumerHierarchy::see_code_button_div(string anchorName) {
-    html += "<div>";
-    html += "<button class='icon-button'";
+void ProducerConsumerHierarchy::see_code_button_div(string anchorName, bool putDiv) {
+    if (putDiv) html += "<div>";
+    html += "<button class='iconButton'";
     html += "onclick='scrollToFunctionVizToCode(\"" + anchorName + "\")'>";
     html += "<i class='bi bi-code-square'></i>";
     html += "</button>";
-    html += "</div>";
+    if (putDiv) html += "</div>";
 }
 
 string ProducerConsumerHierarchy::info_tooltip(string toolTipText, string className = "") {
@@ -886,8 +508,9 @@ string ProducerConsumerHierarchy::info_tooltip(string toolTipText, string classN
     ss += "<i class='bi bi-info'></i>";
     ss += "</button>";
 
+    // tooltip span
     ss += "<span id='prodConsTooltip" + std::to_string(prodConsTooltipCount) + "' ";
-    ss += "class='tooltip prodConsTooltip";
+    ss += "class='tooltip";
     if (className != "") {
         ss += " " + className;
     }
@@ -905,22 +528,16 @@ void ProducerConsumerHierarchy::generate_computation_cost_div(const IRNode *op) 
 
     prodConsTooltipCount++;
 
-    int depth = findStmtCost.get_depth(op);
-    int computation_range = findStmtCost.get_computation_color_range(op);
-    stringstream s;
-
-    map<string, string> tableRows;
-    tableRows["Depth"] = to_string_e(depth);
-    tableRows["Computation Cost"] = to_string_e(computation_range);
-    string tooltipText = tooltip_table(tableRows);
+    string tooltipText = findStmtCost.generate_computation_cost_tooltip(op, true, "");
 
     // tooltip span
-    html +=
-        "<span id='prodConsTooltip" + std::to_string(prodConsTooltipCount) + "' class='tooltip' ";
+    html += "<span id='prodConsTooltip" + std::to_string(prodConsTooltipCount) +
+            "' class='tooltip CostTooltip' ";
     html += "role='prodConsTooltip" + std::to_string(prodConsTooltipCount) + "'>";
     html += tooltipText;
     html += "</span>";
 
+    int computation_range = findStmtCost.get_computation_color_range(op, true);
     string className = "computation-cost-div CostColor" + to_string(computation_range);
     html += "<div id='prodConsButton" + std::to_string(prodConsTooltipCount) + "' ";
     html += "aria-describedby='prodConsTooltip" + std::to_string(prodConsTooltipCount) + "' ";
@@ -934,23 +551,10 @@ void ProducerConsumerHierarchy::generate_memory_cost_div(const IRNode *op) {
 
     prodConsTooltipCount++;
 
-    int depth = findStmtCost.get_depth(op);
-    int data_movement_range = findStmtCost.get_data_movement_color_range(op);
-    stringstream s;
-
-    map<string, string> tableRows;
-    tableRows["Depth"] = to_string(depth);
-    tableRows["Data Movement Cost"] = to_string_e(data_movement_range);
-    string tooltipText = tooltip_table(tableRows);
-
-    // tooltip span
-    html +=
-        "<span id='prodConsTooltip" + std::to_string(prodConsTooltipCount) + "' class='tooltip' ";
-    html += "role='prodConsTooltip" + std::to_string(prodConsTooltipCount) + "'>";
-    html += tooltipText;
-    html += "</span>";
-
+    string tooltipText = findStmtCost.generate_data_movement_cost_tooltip(op, true, "");
     string className = "memory-cost-div CostColor" + to_string_e(data_movement_range);
+    int data_movement_range = findStmtCost.get_data_movement_color_range(op, true);
+    string className = "memory-cost-div CostColor" + to_string(data_movement_range);
     html += "<div id='prodConsButton" + std::to_string(prodConsTooltipCount) + "' ";
     html += "aria-describedby='prodConsTooltip" + std::to_string(prodConsTooltipCount) + "' ";
     html += "class='" + className + "'>";
@@ -974,47 +578,41 @@ string ProducerConsumerHierarchy::color_button(int colorRange) {
     return s.str();
 }
 
-string ProducerConsumerHierarchy::computation_button(const IRNode *op) {
-    int depth = findStmtCost.get_depth(op);
-    int computation_range = findStmtCost.get_computation_color_range(op);
+string ProducerConsumerHierarchy::computation_div(const IRNode *op) {
+    // want exclusive cost (so that the colors match up with exclusive costs)
+    int computation_range = findStmtCost.get_computation_color_range(op, false);
 
     stringstream s;
     s << color_button(computation_range);
 
-    map<string, string> tableRows;
-    tableRows["Depth"] = to_string_e(depth);
-    tableRows["Computation Cost"] = to_string_e(computation_range);
-    string tooltipText = tooltip_table(tableRows);
+    string tooltipText = findStmtCost.generate_computation_cost_tooltip(op, false, "");
 
     // tooltip span
-    s << "<span id='prodConsTooltip" << prodConsTooltipCount << "' class='tooltip' ";
+    s << "<span id='prodConsTooltip" << prodConsTooltipCount << "' class='tooltip CostTooltip' ";
     s << "role='prodConsTooltip" << prodConsTooltipCount << "'>";
     s << tooltipText;
     s << "</span>";
 
     return s.str();
 }
-string ProducerConsumerHierarchy::data_movement_button(const IRNode *op) {
-    int depth = findStmtCost.get_depth(op);
-    int data_movement_range = findStmtCost.get_data_movement_color_range(op);
+string ProducerConsumerHierarchy::data_movement_div(const IRNode *op) {
+    // want exclusive cost (so that the colors match up with exclusive costs)
+    int data_movement_range = findStmtCost.get_data_movement_color_range(op, false);
 
     stringstream s;
     s << color_button(data_movement_range);
 
-    map<string, string> tableRows;
-    tableRows["Depth"] = to_string_e(depth);
-    tableRows["Data Movement Cost"] = to_string_e(data_movement_range);
-    string tooltipText = tooltip_table(tableRows);
+    string tooltipText = findStmtCost.generate_data_movement_cost_tooltip(op, false, "");
 
     // tooltip span
-    s << "<span id='prodConsTooltip" << prodConsTooltipCount << "' class='tooltip' ";
+    s << "<span id='prodConsTooltip" << prodConsTooltipCount << "' class='tooltip CostTooltip' ";
     s << "role='prodConsTooltip" << prodConsTooltipCount << "'>";
     s << tooltipText;
     s << "</span>";
 
     return s.str();
 }
-string ProducerConsumerHierarchy::tooltip_table(map<string, string> &table) {
+string ProducerConsumerHierarchy::tooltip_table(vector<pair<string, string>> &table) {
     stringstream s;
     s << "<table class='tooltipTable'>";
     for (auto &row : table) {
@@ -1027,27 +625,23 @@ string ProducerConsumerHierarchy::tooltip_table(map<string, string> &table) {
     return s.str();
 }
 void ProducerConsumerHierarchy::cost_colors(const IRNode *op) {
-    html += computation_button(op);
-    html += data_movement_button(op);
+    html += computation_div(op);
+    html += data_movement_div(op);
 }
 
 void ProducerConsumerHierarchy::visit_function(const LoweredFunc &func) {
-    open_box_div("FunctionBox", nullptr);
+    open_function_box_div();
 
     functionCount++;
     string anchorName = "loweredFunc" + to_string_e(functionCount);
 
-    string header = "<span id='" + func.name + "'><h4>" + "Func: " + func.name + "</h4></span>";
+    function_div_header(func.name, anchorName);
 
-    StmtSize size;
-    div_header(header, size, anchorName);
-
-    // html += "<hr>";
     html += "<div class='functionViz'>";
     func.body.accept(this);
     html += "</div>";
 
-    close_box_div();
+    close_function_box_div();
 }
 void ProducerConsumerHierarchy::visit(const Variable *op) {
     // if op->name starts with "::", remove "::"
@@ -1056,14 +650,9 @@ void ProducerConsumerHierarchy::visit(const Variable *op) {
         varName = varName.substr(2);
     }
 
-    auto it = pre_processor.main_function_bodies.find(varName);
-    if (it != pre_processor.main_function_bodies.end()) {
-
-        StmtSize size = pre_processor.get_size(op);
-
-        if (!SHOW_CUMULATIVE_COST) {
-            size = StmtSize();
-        }
+    // see if varName is in pre_processor.function_names
+    if (std::count(pre_processor.function_names.begin(), pre_processor.function_names.end(),
+                   varName)) {
 
         html += "<div class='box center FunctionCallBox'>";
 
@@ -1085,17 +674,95 @@ void ProducerConsumerHierarchy::visit(const ProducerConsumer *op) {
 
     string header = (op->is_producer ? "Produce" : "Consume");
     header += " " + op->name;
-    StmtSize size = pre_processor.get_size(op);
 
-    if (!SHOW_CUMULATIVE_COST) {
-        size = StmtSize();
-    }
-
-    div_header(header, size, anchorName);
+    div_header(header, nullptr, anchorName);
 
     op->body.accept(this);
 
     close_box_div();
+}
+string ProducerConsumerHierarchy::get_loop_iterator(const For *op) const {
+    Expr min = op->min;
+    Expr extent = op->extent;
+
+    string loopIterator;
+
+    // check if min and extend are of type IntImm
+    if (min.node_type() == IRNodeType::IntImm && extent.node_type() == IRNodeType::IntImm) {
+        int64_t minValue = min.as<IntImm>()->value;
+        int64_t extentValue = extent.as<IntImm>()->value;
+        uint16_t range = uint16_t(extentValue - minValue);
+        loopIterator = pre_processor.int_span(range);
+    }
+
+    else if (min.node_type() == IRNodeType::IntImm && extent.node_type() == IRNodeType::Variable) {
+        int64_t minValue = min.as<IntImm>()->value;
+        string minName = pre_processor.int_span(minValue);
+        string extentName = pre_processor.string_span(extent.as<Variable>()->name);
+
+        if (minValue == 0) {
+            loopIterator = extentName;
+        } else {
+            loopIterator = "(" + extentName + " - " + minName + ")";
+        }
+    }
+
+    else if (min.node_type() == IRNodeType::IntImm && extent.node_type() == IRNodeType::Add) {
+        int64_t minValue = min.as<IntImm>()->value;
+        string minName = pre_processor.int_span(minValue);
+        string extentName = "(";
+
+        // deal with a
+        if (extent.as<Add>()->a.node_type() == IRNodeType::IntImm) {
+            int64_t extentValue = extent.as<Add>()->a.as<IntImm>()->value;
+            extentName += pre_processor.int_span(extentValue);
+        } else if (extent.as<Add>()->a.node_type() == IRNodeType::Variable) {
+            extentName += pre_processor.string_span(extent.as<Add>()->a.as<Variable>()->name);
+        } else {
+            internal_error << "\n"
+                           << "In for loop: " << op->name << "\n"
+                           << pre_processor.print_node(extent.as<Add>()->a.get()) << "\n"
+                           << "StmtSizes::visit(const For *op): add->a isn't IntImm or Variable - "
+                              "can't generate ProdCons hierarchy yet. \n\n";
+        }
+
+        extentName += "+";
+
+        // deal with b
+        if (extent.as<Add>()->b.node_type() == IRNodeType::IntImm) {
+            int64_t extentValue = extent.as<Add>()->b.as<IntImm>()->value;
+            extentName += pre_processor.int_span(extentValue);
+        } else if (extent.as<Add>()->b.node_type() == IRNodeType::Variable) {
+            extentName += pre_processor.string_span(extent.as<Add>()->b.as<Variable>()->name);
+        } else {
+            internal_error << "\n"
+                           << "In for loop: " << op->name << "\n"
+                           << pre_processor.print_node(extent.as<Add>()->b.get()) << "\n"
+                           << "StmtSizes::visit(const For *op): add->b isn't IntImm or Variable - "
+                              "can't generate ProdCons hierarchy yet. \n\n";
+        }
+        extentName += ")";
+
+        if (minValue == 0) {
+            loopIterator = extentName;
+        } else {
+            loopIterator = "(" + extentName + " - " + minName + ")";
+        }
+
+    }
+
+    else {
+        internal_error
+            << "\n"
+            << "In for loop: " << op->name << "\n"
+            << pre_processor.print_node(op->min.get()) << "\n"
+            << pre_processor.print_node(op->extent.get()) << "\n"
+            << "StmtSizes::visit(const For *op): min and extent are not of type (IntImm) "
+               "or (IntImm & Variable) or (IntImm & Add) - "
+               "can't generate ProdCons hierarchy yet. \n\n";
+    }
+
+    return loopIterator;
 }
 
 void ProducerConsumerHierarchy::visit(const For *op) {
@@ -1104,15 +771,9 @@ void ProducerConsumerHierarchy::visit(const For *op) {
     forCount++;
     string anchorName = "for" + std::to_string(forCount);
 
-    StmtSize size = pre_processor.get_size(op);
-
     string header = "For (" + op->name + ")";
 
-    if (SHOW_CUMULATIVE_COST) {
-        div_header(header, size, anchorName);
-    } else {
-        for_loop_div_header(op, header, size, anchorName);
-    }
+    for_loop_div_header(op, header, anchorName);
 
     op->body.accept(this);
 
@@ -1120,13 +781,6 @@ void ProducerConsumerHierarchy::visit(const For *op) {
 }
 
 void ProducerConsumerHierarchy::visit(const IfThenElse *op) {
-    StmtSize thenSize = pre_processor.get_size(op->then_case.get());
-    StmtSize elseSize;
-
-    if (op->else_case.defined()) {
-        elseSize = pre_processor.get_size(op->else_case.get());
-    }
-
     // open main if tree
     html += "<div class='tf-tree tf-gap-sm tf-custom-prodCons'>";
     html += "<ul>";
@@ -1143,10 +797,6 @@ void ProducerConsumerHierarchy::visit(const IfThenElse *op) {
     string anchorName = "if" + std::to_string(ifCount);
 
     while (true) {
-
-        thenSize = pre_processor.get_size(op->then_case.get());
-
-        // TODO: inline condition
         string condition;
         condition += to_string_e(op->condition);
 
@@ -1159,10 +809,7 @@ void ProducerConsumerHierarchy::visit(const IfThenElse *op) {
 
         ifHeader += condition;
 
-        if (!SHOW_CUMULATIVE_COST) {
-            thenSize = StmtSize();
-        }
-        if_tree(op->then_case.get(), ifHeader, thenSize, anchorName);
+        if_tree(op, ifHeader, anchorName);
 
         // then body
         op->then_case.accept(this);
@@ -1188,7 +835,6 @@ void ProducerConsumerHierarchy::visit(const IfThenElse *op) {
 
         // if else case is not another ifthenelse
         else {
-            elseSize = pre_processor.get_size(op->else_case.get());
 
             string elseHeader;
             elseHeader += "else ";
@@ -1197,10 +843,7 @@ void ProducerConsumerHierarchy::visit(const IfThenElse *op) {
             ifCount++;
             anchorName = "if" + std::to_string(ifCount);
 
-            if (!SHOW_CUMULATIVE_COST) {
-                elseSize = StmtSize();
-            }
-            if_tree(op->else_case.get(), elseHeader, elseSize, anchorName);
+            if_tree(op->else_case.get(), elseHeader, anchorName);
 
             op->else_case.accept(this);
 
@@ -1224,16 +867,15 @@ void ProducerConsumerHierarchy::visit(const Store *op) {
 
     string header = "Store " + op->name;
 
-    map<string, string> tableRows;
-
-    tableRows["Vector Size"] = to_string_e(op->index.type().lanes());
-    tableRows["Bit Size"] = to_string_e(op->index.type().bits());
+    vector<pair<string, string>> tableRows;
+    tableRows.push_back({"Vector Size", to_string(op->index.type().lanes())});
+    tableRows.push_back({"Bit Size", to_string(op->index.type().bits())});
 
     header += info_tooltip(tooltip_table(tableRows));
 
     open_box_div("StoreBox", op);
 
-    div_header(header, size, anchorName);
+    div_header(header, &size, anchorName);
 
     op->value.accept(this);
 
@@ -1244,27 +886,46 @@ void ProducerConsumerHierarchy::visit(const Load *op) {
 
     if (op->type.is_scalar()) {
         header = "Scalar ";
-    } else if (op->type.is_vector()) {
-        header = "Vector ";
-    } else {
+    }
+
+    else if (op->type.is_vector()) {
+        if (op->index.node_type() == IRNodeType::Ramp) {
+            const Ramp *ramp = op->index.as<Ramp>();
+            if (ramp->stride.node_type() == IRNodeType::IntImm) {
+                int64_t stride = ramp->stride.as<IntImm>()->value;
+                if (stride == 1) {
+                    header = "Dense Vector ";
+                } else {
+                    header = "Strided Vector ";
+                    cout << "strided vector!!!! check it out!!! Load " << op->name << endl;
+                }
+            } else {
+                header = "Dense Vector ";
+            }
+        } else {
+            header = "Dense Vector ";
+        }
+    }
+
+    else {
         internal_error << "\n\nUnsupported type for Load: " << op->type << "\n\n";
     }
 
     header += "Load " + op->name;
 
-    map<string, string> tableRows;
+    vector<pair<string, string>> tableRows;
 
     if (findStmtCost.is_local_variable(op->name)) {
-        tableRows["Variable Type"] = "local var";
+        tableRows.push_back({"Variable Type", "local var"});
     } else {
-        tableRows["Variable Type"] = "global var";
+        tableRows.push_back({"Variable Type", "global var"});
     }
 
-    tableRows["Bit Size"] = to_string_e(op->index.type().bits());
-    tableRows["Vector Size"] = to_string_e(op->index.type().lanes());
+    tableRows.push_back({"Bit Size", to_string(op->index.type().bits())});
+    tableRows.push_back({"Vector Size", to_string(op->index.type().lanes())});
 
     if (op->param.defined()) {
-        tableRows["Parameter"] = op->param.name();
+        tableRows.push_back({"Parameter", op->param.name()});
     }
 
     header += info_tooltip(tooltip_table(tableRows));
@@ -1309,38 +970,37 @@ void ProducerConsumerHierarchy::visit(const Allocate *op) {
 
     string header = "Allocate " + op->name;
 
-    map<string, string> tableRows;
-    tableRows["Memory Type"] = get_memory_type(op->memory_type);
+    vector<pair<string, string>> tableRows;
+    tableRows.push_back({"Memory Type", get_memory_type(op->memory_type)});
 
     if (!is_const_one(op->condition)) {
-        tableRows["Condition"] = to_string_e(op->condition);
+        tableRows.push_back({"Condition", to_string(op->condition)});
     }
     if (op->new_expr.defined()) {
         internal_error << "\n"
                        << "ProducerConsumerHierarchy: Allocate " << op->name
                        << " `op->new_expr.defined()` is not supported.\n\n";
 
-        tableRows["New Expr"] = to_string_e(op->new_expr);
+        tableRows.push_back({"New Expr", to_string(op->new_expr)});
     }
     if (!op->free_function.empty()) {
         internal_error << "\n"
                        << "ProducerConsumerHierarchy: Allocate " << op->name
                        << " `!op->free_function.empty()` is not supported.\n\n";
 
-        tableRows["Free Function"] = to_string_e(op->free_function);
+        tableRows.push_back({"Free Function", to_string(op->free_function)});
     }
 
-    tableRows["Bit Size"] = to_string_e(op->type.bits());
-    tableRows["Vector Size"] = to_string_e(op->type.lanes());
+    tableRows.push_back({"Bit Size", to_string(op->type.bits())});
+    tableRows.push_back({"Vector Size", to_string(op->type.lanes())});
 
     header += info_tooltip(tooltip_table(tableRows));
 
-    StmtSize size = pre_processor.get_size(op);
-    allocate_div_header(op, header, size, anchorName);
-
-    close_box_div();
+    allocate_div_header(op, header, anchorName);
 
     op->body.accept(this);
+
+    close_box_div();
 }
 
 string ProducerConsumerHierarchy::generate_prodCons_js() {
@@ -1348,8 +1008,8 @@ string ProducerConsumerHierarchy::generate_prodCons_js() {
 
     prodConsJS += "\n// prodCons JS\n";
     prodConsJS += "for (let i = 1; i <= " + std::to_string(prodConsTooltipCount) + "; i++) { \n";
-    prodConsJS += "    const button = document.querySelector('#prodConsButton' + i); \n";
-    prodConsJS += "    const tooltip = document.querySelector('#prodConsTooltip' + i); \n";
+    prodConsJS += "    const button = document.getElementById('prodConsButton' + i); \n";
+    prodConsJS += "    const tooltip = document.getElementById('prodConsTooltip' + i); \n";
     prodConsJS += "    button.addEventListener('mouseenter', () => { \n";
     prodConsJS += "        showTooltip(button, tooltip); \n";
     prodConsJS += "    }); \n";
@@ -1366,6 +1026,22 @@ string ProducerConsumerHierarchy::generate_prodCons_js() {
     prodConsJS += "    } \n";
     prodConsJS += "    ); \n";
     prodConsJS += "} \n";
+    prodConsJS += "function toggleCollapse(id) {\n ";
+    prodConsJS += "    var buttonShow = document.getElementById('prodCons' + id + '-show');\n";
+    prodConsJS += "    var buttonHide = document.getElementById('prodCons' + id + '-hide');\n";
+    prodConsJS += "    var body = document.getElementById('prodCons' + id);\n";
+    prodConsJS += "    if (body.style.visibility != 'hidden') {\n";
+    prodConsJS += "        body.style.visibility = 'hidden';\n";
+    prodConsJS += "        body.style.height = '0px';\n";
+    prodConsJS += "        body.style.width = '0px';\n";
+    prodConsJS += "        buttonShow.style.display = 'block';\n";
+    prodConsJS += "        buttonHide.style.display = 'none';\n";
+    prodConsJS += "    } else {\n";
+    prodConsJS += "        body.style = '';\n";
+    prodConsJS += "        buttonShow.style.display = 'none';\n";
+    prodConsJS += "        buttonHide.style.display = 'block';\n";
+    prodConsJS += "    }\n";
+    prodConsJS += "}\n ";
 
     return prodConsJS;
 }
@@ -1375,7 +1051,7 @@ string ProducerConsumerHierarchy::generate_prodCons_js() {
  */
 string StmtSizes::print_node(const IRNode *node) const {
     stringstream s;
-    s << "Crashing node has type: ";
+    s << "Node in question has type: ";
     IRNodeType type = node->node_type;
     if (type == IRNodeType::IntImm) {
         s << "IntImm type";
@@ -1542,6 +1218,7 @@ div.box { \n \
     margin: 5px; \n \
     padding: 5px; \n \
     display: flex; \n \
+    width: max-content; \n \
 } \n \
 div.boxHeader { \n \
     padding: 5px; \n \
@@ -1557,6 +1234,15 @@ div.FunctionCallBox { \n \
 } \n \
 div.FunctionBox { \n \
     background-color: #f0f0f0; \n \
+    border: 1px dashed grey; \n \
+    border-radius: 5px; \n \
+    margin-bottom: 15px; \n \
+    padding: 5px; \n \
+    width: max-content; \n \
+} \n \
+div.functionHeader { \n \
+    display: flex; \n \
+    margin-bottom: 10px; \n \
 } \n \
 div.ProducerConsumerBox { \n \
     background-color: #99bbff; \n \
@@ -1618,15 +1304,18 @@ div.content { \n \
 .prodConsColorButton { \n \
     height: 15px; \n \
     width: 10px; \n \
-    margin-right: 1px; \n \
-    margin-left: 1px; \n \
+    margin-right: 2px; \n \
     border: 1px solid rgba(0, 0, 0, 0); \n \
     vertical-align: middle; \n \
+    border-radius: 2px; \n \
 } \n \
 .prodConsColorButton:hover { \n \
     border: 1px solid grey; \n \
 } \n \
 div.boxHeaderTitle { \n \
     font-weight: bold; \n \
+} \n \
+.prodConsToggle { \n \
+    margin-right: 5px; \n \
 } \n \
 ";

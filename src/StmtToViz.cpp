@@ -47,13 +47,7 @@ class StmtToViz : public IRVisitor {
     static const string lineNumbersCSS;
     static const string tooltipCSS;
     static const string expandCodeJS;
-
-    FindStmtCost findStmtCost;                            // used for finding the cost of statements
-    GetStmtHierarchy getStmtHierarchy;                    // used for getting the hierarchy of
-                                                          // statements
-    ProducerConsumerHierarchy producerConsumerHierarchy;  // used for getting the hierarchy of
-                                                          // producer/consumer
-    DependencyGraph dependencyGraph;                      // used for getting the dependency graph
+    static const string assemblyCodeJS;
 
     // This allows easier access to individual elements.
     int id_count;
@@ -61,12 +55,14 @@ class StmtToViz : public IRVisitor {
 private:
     std::ofstream stream;
 
-    // used for deciding which variables are in context vs not
-    vector<string> curr_context;
-    bool in_context;
+    FindStmtCost findStmtCost;                            // used for finding the cost of statements
+    GetStmtHierarchy getStmtHierarchy;                    // used for getting the hierarchy of
+                                                          // statements
+    ProducerConsumerHierarchy producerConsumerHierarchy;  // used for getting the hierarchy of
+                                                          // producer/consumer
+    GetAssemblyInfoViz getAssemblyInfoViz;  // used for getting the assembly line numbers
+
     int curr_line_num;  // for accessing div of that line
-    string content_rule_script_stream;
-    bool in_loop;
 
     // used for getting anchor names
     int ifCount = 0;
@@ -83,49 +79,8 @@ private:
     int popupCount = 0;
     string popups;
 
-    string get_file_name(string fileName) {
-        // remove leading directories from filename
-        string f = fileName;
-        size_t pos = f.find_last_of("/");
-        if (pos != string::npos) {
-            f = f.substr(pos + 1);
-        }
-        cout << "Printing to " << f << endl;
-        return f;
-    }
-
-    void reset_context() {
-        curr_context.clear();
-    }
-
-    bool is_in_context(const string name) const {
-        for (auto &context : curr_context) {
-            if (context == name) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // only removes it if it's there
-    void remove_context(const string name) {
-        for (auto it = curr_context.begin(); it != curr_context.end(); ++it) {
-            if (*it == name) {
-                curr_context.erase(it);
-                return;
-            }
-        }
-    }
-
     int unique_id() {
         return ++id_count;
-    }
-
-    void add_context_rule(const int line_num) {
-        string id = "ContextSpan" + to_string_v(line_num);
-        content_rule_script_stream += "document.getElementById('" + id +
-                                      "').classList.add('hoverContextButton');\n" +
-                                      "document.getElementById('" + id + "').disabled = false;\n";
     }
 
     // All spans and divs will have an id of the form "x-y", where x
@@ -156,15 +111,21 @@ private:
         return "</" + tag + ">";
     }
 
-    string get_stmt_hierarchy(const Stmt &op) {
-        string hierarchyHTML = getStmtHierarchy.get_hierarchy_html(op);
-        if (PRINT_HIERARCHY) cout << hierarchyHTML << endl;
-        return generate_stmt_hierarchy_popup(hierarchyHTML);
+    StmtHierarchyInfo get_stmt_hierarchy(const Stmt &op) {
+        StmtHierarchyInfo stmtHierarchyInfo = getStmtHierarchy.get_hierarchy_html(op);
+        string &html = stmtHierarchyInfo.html;
+        string popup = generate_stmt_hierarchy_popup(html);
+        stmtHierarchyInfo.html = popup;
+
+        return stmtHierarchyInfo;
     }
-    string get_stmt_hierarchy(const Expr &op) {
-        string hierarchyHTML = getStmtHierarchy.get_hierarchy_html(op);
-        if (PRINT_HIERARCHY) cout << hierarchyHTML << endl;
-        return generate_stmt_hierarchy_popup(hierarchyHTML);
+    StmtHierarchyInfo get_stmt_hierarchy(const Expr &op) {
+        StmtHierarchyInfo stmtHierarchyInfo = getStmtHierarchy.get_hierarchy_html(op);
+        string &html = stmtHierarchyInfo.html;
+        string popup = generate_stmt_hierarchy_popup(html);
+        stmtHierarchyInfo.html = popup;
+
+        return stmtHierarchyInfo;
     }
 
     string generate_stmt_hierarchy_popup(string hierarchyHTML) {
@@ -193,22 +154,59 @@ private:
         return popup.str();
     }
 
-    string open_cost_span(const IRNode *op, const string &hierarchyHTML) {
+    string open_cost_span(const Stmt &stmt_op) {
+        StmtHierarchyInfo stmtHierarchyInfo = get_stmt_hierarchy(stmt_op);
+
         stringstream s;
 
-        if (op->node_type == IRNodeType::Store) {  // TODO: if we want it to be for entire
-                                                   // store, change cost of store in
-                                                   // StmtCost.cpp∂
-            s << cost_colors(((const Store *)op)->value.get(), hierarchyHTML);
-        } else {
-            s << cost_colors(op, hierarchyHTML);
-        }
+        s << cost_colors(stmt_op.get(), stmtHierarchyInfo);
+
+        // popup window - will put them all at the end
+        popups += stmtHierarchyInfo.html + "\n";
 
         s << "<span id='Cost" << id_count << "'>";
         return s.str();
     }
+    string open_cost_span(const Expr &stmt_op) {
+        StmtHierarchyInfo stmtHierarchyInfo = get_stmt_hierarchy(stmt_op);
+
+        stringstream s;
+
+        s << cost_colors(stmt_op.get(), stmtHierarchyInfo);
+
+        // popup window - will put them all at the end
+        popups += stmtHierarchyInfo.html + "\n";
+
+        s << "<span id='Cost" << id_count << "'>";
+        return s.str();
+    }
+
     string close_cost_span() {
         return "<!-- closing_cost_span --></span>";
+    }
+    string open_cost_span_else_case(Stmt else_case) {
+        Stmt new_node =
+            IfThenElse::make(Variable::make(Int(32), "canIgnoreVariableName"), else_case, nullptr);
+
+        StmtHierarchyInfo stmtHierarchyInfo = getStmtHierarchy.get_else_hierarchy_html();
+        string popup = generate_stmt_hierarchy_popup(stmtHierarchyInfo.html);
+
+        // popup window - will put them all at the end
+        popups += popup + "\n";
+
+        stringstream s;
+
+        curr_line_num += 1;
+
+        s << "<span class='smallColorIndent'>";
+
+        s << computation_button(new_node.get(), stmtHierarchyInfo);
+        s << data_movement_button(new_node.get(), stmtHierarchyInfo);
+
+        s << "</span>";
+
+        s << "<span id='Cost" << id_count << "'>";
+        return s.str();
     }
 
     string open_span(const string &cls, int id = -1) {
@@ -227,127 +225,102 @@ private:
         return span("Matched", body);
     }
 
-    string color_button(int colorRange) {
-        stringstream s;
+    string color_button(const IRNode *op, bool is_computation,
+                        const StmtHierarchyInfo &stmtHierarchyInfo) {
 
+        int colorRangeInclusive, colorRangeExclusive;
+
+        if (is_computation) {
+            colorRangeInclusive = findStmtCost.get_combined_computation_color_range(op);
+            colorRangeExclusive = findStmtCost.get_computation_color_range(op, false);
+        } else {
+            colorRangeInclusive = findStmtCost.get_combined_data_movement_color_range(op);
+            colorRangeExclusive = findStmtCost.get_data_movement_color_range(op, false);
+        }
         tooltipCount++;
-        s << "<button id='button" << tooltipCount << "' ";
+
+        stringstream s;
+        s << "<button ";
+
+        // tooltip information
+        s << "id='button" << tooltipCount << "' ";
         s << "aria-describedby='tooltip" << tooltipCount << "' ";
-        s << "class='colorButton CostColor" + to_string_v(colorRange) + "' role='button' ";
+
+        // cost colors
+        s << "class='colorButton CostColor" + to_string(colorRangeExclusive) + "' role='button' ";
+
+        // showing StmtHierarchy popup
         s << "data-bs-toggle='modal' data-bs-target='#stmtHierarchyModal" << popupCount << "' ";
+
+        // for collapsing and expanding StmtHierarchy nodes
+        s << "onclick='collapseAllNodes(" << stmtHierarchyInfo.start_node << ", "
+          << stmtHierarchyInfo.end_node << "); expandNodesUpToDepth(4, "
+          << stmtHierarchyInfo.viz_num << ");'";
+
+        // highlighting selected line in grey
         s << "onmouseover='document.getElementById(\"Cost" << id_count
           << "\").style.background = \"rgba(10,10,10,0.1)\";'";
         s << "onmouseout='document.getElementById(\"Cost" << id_count
           << "\").style.background = \"transparent\";'";
+
+        // for collapsing and expanding and adjusting colors accordingly
+        s << "inclusiverange='" << colorRangeInclusive << "' ";
+        s << "exclusiverange='" << colorRangeExclusive << "' ";
+
         s << ">";
         s << "</button>";
 
         return s.str();
     }
-    string context_button(const IRNode *op) {
-        int depth = findStmtCost.get_depth(op);
 
+    string computation_button(const IRNode *op, const StmtHierarchyInfo &stmtHierarchyInfo) {
         stringstream s;
-        s << "<button class='ContextButton' id='ContextSpan" << curr_line_num
-          << "' disabled></button>";
+        s << color_button(op, true, stmtHierarchyInfo);
 
-        stringstream tooltipText;
-
-        tooltipText << "<span style='color:red;'>";
-        tooltipText
-            << "This variable isn't required in this loop. Can be moved outside of the loop.";
-        tooltipText << "</span>";
-
-        map<string, string> tableRows;
-        tableRows["Depth"] = to_string_v(depth);
-
-        tooltipText << tooltip_table(tableRows);
+        string tooltipText = findStmtCost.generate_computation_cost_tooltip(
+            op, false, "[Click to see full hierarchy]");
 
         // tooltip span
-        s << "<span id='tooltip" << tooltipCount << "' class='tooltip' ";
+        s << "<span id='tooltip" << tooltipCount << "' class='tooltip CostTooltip' ";
         s << "role='tooltip" << tooltipCount << "'>";
-        s << tooltipText.str();
+        s << tooltipText;
         s << "</span>";
 
         return s.str();
     }
-    string computation_button(const IRNode *op) {
-        int depth = findStmtCost.get_depth(op);
-        int computation_range = findStmtCost.get_computation_color_range(op);
-
+    string data_movement_button(const IRNode *op, const StmtHierarchyInfo &stmtHierarchyInfo) {
         stringstream s;
-        s << color_button(computation_range);
+        s << color_button(op, false, stmtHierarchyInfo);
 
-        stringstream tooltipText;
-
-        map<string, string> tableRows;
-        tableRows["Depth"] = to_string_v(depth);
-        tableRows["Computation Cost"] = to_string_v(computation_range);
-        tooltipText << tooltip_table(tableRows);
+        string tooltipText = findStmtCost.generate_data_movement_cost_tooltip(
+            op, false, "[Click to see full hierarchy]");
 
         // tooltip span
-        s << "<span id='tooltip" << tooltipCount << "' class='tooltip' ";
+        s << "<span id='tooltip" << tooltipCount << "' class='tooltip CostTooltip' ";
         s << "role='tooltip" << tooltipCount << "'>";
-        s << tooltipText.str();
+        s << tooltipText;
         s << "</span>";
 
         return s.str();
     }
-    string data_movement_button(const IRNode *op) {
-        int depth = findStmtCost.get_depth(op);
-        int data_movement_range = findStmtCost.get_data_movement_color_range(op);
-        stringstream s;
-        s << color_button(data_movement_range);
-
-        stringstream tooltipText;
-
-        map<string, string> tableRows;
-        tableRows["Depth"] = to_string_v(depth);
-        tableRows["Data Movement Cost"] = to_string_v(data_movement_range);
-        tooltipText << tooltip_table(tableRows);
-
-        // tooltip span
-        s << "<span id='tooltip" << tooltipCount << "' class='tooltip' ";
-        s << "role='tooltip" << tooltipCount << "'>";
-        s << tooltipText.str();
-        s << "</span>";
-
-        return s.str();
-    }
-    string cost_colors(const IRNode *op, const string &hierarchyHTML) {
+    string cost_colors(const IRNode *op, const StmtHierarchyInfo &stmtHierarchyInfo) {
         curr_line_num += 1;
 
         stringstream s;
 
-        if (op->node_type == IRNodeType::Allocate || op->node_type == IRNodeType::Evaluate)
+        if (op->node_type == IRNodeType::Allocate || op->node_type == IRNodeType::Evaluate ||
+            op->node_type == IRNodeType::IfThenElse || op->node_type == IRNodeType::For ||
+            op->node_type == IRNodeType::ProducerConsumer) {
             s << "<span class='smallColorIndent'>";
-        else
+        } else {
             s << "<span class='bigColorIndent'>";
+        }
 
-        // popup window - will put them all at the end
-        popups += hierarchyHTML + "\n";
-
-        s << computation_button(op);
-        s << data_movement_button(op);
-        s << context_button(op);
+        s << computation_button(op, stmtHierarchyInfo);
+        s << data_movement_button(op, stmtHierarchyInfo);
 
         s << "</span>";
 
-        return s.str();
-    }
-
-    string tooltip_table(map<string, string> &table) {
-        stringstream s;
-        s << "<table class='tooltipTable'>";
-        for (auto &row : table) {
-            s << "<tr>";
-            s << "<td class = 'left-table'>" << row.first << "</td>";
-            s << "<td class = 'right-table'> " << row.second << "</td>";
-            s << "</tr>";
-        }
-        s << "</table>";
-        s << "<i><span class='tooltipHelperText'>";
-        s << "[Click to see full hierarchy]</span></i>";
         return s.str();
     }
 
@@ -368,10 +341,41 @@ private:
     string see_viz_button(const string &anchorName) {
         stringstream s;
 
-        s << "<button class='icon-button' ";
+        s << "<button class='iconButton' ";
         s << "onclick='scrollToFunctionCodeToViz(\"" + anchorName + "_viz\")'>";
         s << "<i class='bi bi-arrow-right-square'></i>";
         s << "</button>";
+
+        return s.str();
+    }
+
+    string see_assembly_button(const int &assemblyLineNum) {
+        stringstream s;
+
+        tooltipCount++;
+        s << "<button class='iconButton assemblyIcon' ";
+        s << "id='button" << tooltipCount << "' ";
+        s << "aria-describedby='tooltip" << tooltipCount << "' ";
+        s << "onclick='openAssembly(" << assemblyLineNum << ");'>";
+        s << "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' "
+             "class='bi bi-filetype-raw' viewBox='0 0 16 16'>";
+        s << "<path fill-rule='evenodd' d='M14 4.5V14a2 2 0 0 1-2 2v-1a1 1 0 0 0 1-1V4.5h-2A1.5 "
+             "1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v9H2V2a2 2 0 0 1 2-2h5.5L14 4.5ZM1.597 "
+             "11.85H0v3.999h.782v-1.491h.71l.7 1.491h1.651l.313-1.028h1.336l.314 1.028h.84L5.31 "
+             "11.85h-.925l-1.329 3.96-.783-1.572A1.18 1.18 0 0 0 3 "
+             "13.116c0-.256-.056-.479-.167-.668a1.098 1.098 0 0 0-.478-.44 1.669 1.669 0 0 "
+             "0-.758-.158Zm-.815 1.913v-1.292h.7a.74.74 0 0 1 .507.17c.13.113.194.276.194.49 0 "
+             ".21-.065.368-.194.474-.127.105-.3.158-.518.158H.782Zm4.063-1.148.489 "
+             "1.617H4.32l.49-1.617h.035Zm4.006.445-.74 2.789h-.73L6.326 11.85h.855l.601 "
+             "2.903h.038l.706-2.903h.683l.706 2.903h.04l.596-2.903h.858l-1.055 "
+             "3.999h-.73l-.74-2.789H8.85Z'/></svg>";
+        s << "</button>";
+
+        // tooltip span
+        s << "<span id='tooltip" << tooltipCount << "' class='tooltip' ";
+        s << "role='tooltip" << tooltipCount << "'>";
+        s << "Click to see assembly code";
+        s << "</span>";
 
         return s.str();
     }
@@ -426,7 +430,8 @@ private:
 
     string open_expand_button(int id) {
         stringstream button;
-        button << "<a class=ExpandButton onclick='return toggle(" << id << ");' href=_blank>"
+        button << "<a class=ExpandButton onclick='return toggle(" << id << ", " << tooltipCount
+               << ");'>"
                << "<div style='position:relative; width:0; height:0;'>"
                << "<div class=ShowHide style='display:none;' id=" << id << "-show"
                << "><i class='fa fa-plus-square-o'></i></div>"
@@ -492,10 +497,6 @@ private:
     }
 
     void visit(const Variable *op) override {
-
-        if (is_in_context(op->name)) {
-            in_context = true;
-        }
 
         stream << var(op->name);
     }
@@ -628,13 +629,12 @@ private:
     }
     void visit(const Call *op) override {
         stream << open_span("Call");
+
         print_list(symbol(op->name) + "(", op->args, ")");
         stream << close_span();
     }
 
     void visit(const Let *op) override {
-        bool in_context_before = in_context;
-        in_context = false;
 
         scope.push(op->name, unique_id());
         stream << open_span("Let");
@@ -645,27 +645,18 @@ private:
         stream << " " << matched("Operator Assign", "=") << " ";
         print(op->value);
 
-        if (in_context) {
-            curr_context.push_back(op->name);
-        }
-        in_context = in_context_before;
-
         stream << " " << matched("Keyword", "in") << " ";
         print(op->body);
         stream << matched(")");
         stream << close_span();
         scope.pop(op->name);
-
-        remove_context(op->name);
     }
     void visit(const LetStmt *op) override {
-        bool in_context_before = in_context;
-        in_context = false;
 
         scope.push(op->name, unique_id());
         stream << open_div("LetStmt") << open_line();
 
-        stream << open_cost_span(op, get_stmt_hierarchy(op));
+        stream << open_cost_span(op);
         stream << open_span("Matched");
         stream << keyword("let") << " ";
         stream << var(op->name);
@@ -675,27 +666,18 @@ private:
         print(op->value);
         stream << close_cost_span();
 
-        if (in_context) {
-            curr_context.push_back(op->name);
-        } else if (in_loop) {
-            add_context_rule(curr_line_num);
-        }
-        in_context = in_context_before;
-
         stream << close_line();
         print(op->body);
         stream << close_div();
 
         scope.pop(op->name);
-
-        remove_context(op->name);
     }
     void visit(const AssertStmt *op) override {
         stream << open_div("AssertStmt WrapLine");
         std::vector<Expr> args;
         args.push_back(op->condition);
         args.push_back(op->message);
-        stream << open_cost_span(op, get_stmt_hierarchy(op));
+        stream << open_cost_span(op);
         print_list(symbol("assert") + "(", args, ")");
         stream << close_cost_span();
         stream << close_div();
@@ -708,7 +690,12 @@ private:
         producerConsumerCount++;
         string anchorName = "producerConsumer" + std::to_string(producerConsumerCount);
 
+        // for assembly
+        int assemblyLineNum = getAssemblyInfoViz.get_line_number(op);
+
         int produce_id = unique_id();
+
+        stream << open_cost_span(op);
         stream << open_span("Matched");
         stream << open_expand_button(produce_id);
         stream << open_anchor(anchorName);
@@ -716,7 +703,9 @@ private:
         stream << var(op->name);
         stream << close_expand_button() << " {";
         stream << close_span();
+        stream << close_cost_span();
         stream << close_anchor();
+        if (assemblyLineNum != -1) stream << see_assembly_button(assemblyLineNum);
         stream << see_viz_button(anchorName);
 
         stream << open_div(op->is_producer ? "ProduceBody Indent" : "ConsumeBody Indent",
@@ -731,11 +720,6 @@ private:
     }
 
     void visit(const For *op) override {
-        bool in_loop_before = in_loop;
-
-        vector<string> previous_context(curr_context);
-        reset_context();
-        curr_context.push_back(op->name);
 
         scope.push(op->name, unique_id());
         stream << open_div("For");
@@ -744,7 +728,11 @@ private:
         forCount++;
         string anchorName = "for" + std::to_string(forCount);
 
+        // for assembly
+        int assemblyLineNum = getAssemblyInfoViz.get_line_number(op);
+
         int id = unique_id();
+        stream << open_cost_span(op);
         stream << open_expand_button(id);
         stream << open_anchor(anchorName);
         stream << open_span("Matched");
@@ -770,12 +758,13 @@ private:
         stream << close_span();
 
         print_list({Variable::make(Int(32), op->name), op->min, op->extent});
-        in_loop = true;
 
         stream << matched(")");
         stream << close_expand_button();
         stream << " " << matched("{");
+        stream << close_cost_span();
         stream << close_anchor();
+        if (assemblyLineNum != -1) stream << see_assembly_button(assemblyLineNum);
         stream << see_viz_button(anchorName);
 
         stream << open_div("ForBody Indent", id);
@@ -786,9 +775,6 @@ private:
         stream << close_div();
         stream << close_div();
         scope.pop(op->name);
-
-        curr_context = previous_context;
-        in_loop = in_loop_before;
     }
 
     void visit(const Acquire *op) override {
@@ -819,7 +805,7 @@ private:
         storeCount++;
         string anchorName = "store" + std::to_string(storeCount);
 
-        stream << open_cost_span(op, get_stmt_hierarchy(op));
+        stream << open_cost_span(op);
         stream << open_anchor(anchorName);
 
         stream << open_span("Matched");
@@ -839,9 +825,6 @@ private:
         }
         stream << close_span();
 
-        if (!in_context && in_loop) {
-            add_context_rule(curr_line_num);
-        }
         stream << close_anchor();
         stream << close_cost_span();
         stream << see_viz_button(anchorName);
@@ -871,7 +854,7 @@ private:
         string anchorName = "allocate" + std::to_string(allocateCount);
         stream << open_anchor(anchorName);
 
-        stream << open_cost_span(op, get_stmt_hierarchy(op));
+        stream << open_cost_span(op);
 
         stream << open_span("Matched");
         stream << keyword("allocate") << " ";
@@ -908,9 +891,6 @@ private:
         }
         stream << close_cost_span();
 
-        if (!in_context && in_loop) {
-            add_context_rule(curr_line_num);
-        }
         stream << close_anchor();
         stream << see_viz_button(anchorName);
 
@@ -1041,6 +1021,7 @@ private:
         string anchorName = "if" + std::to_string(ifCount);
 
         int id = unique_id();
+        stream << open_cost_span(op);
         stream << open_expand_button(id);
         stream << open_anchor(anchorName);
         stream << open_span("Matched");
@@ -1057,6 +1038,7 @@ private:
             stream << matched(")");
             stream << close_expand_button() << " ";
             stream << matched("{");  // close if (or else if) span
+            stream << close_cost_span();
             close_anchor();
             stream << see_viz_button(anchorName);
 
@@ -1078,6 +1060,7 @@ private:
                 stream << matched("}");
                 stream << close_div();
 
+                stream << open_cost_span(nested_if);
                 stream << open_expand_button(id);
                 stream << open_span("Matched");
 
@@ -1098,6 +1081,7 @@ private:
                 stream << matched("}");
                 stream << close_div();
 
+                stream << open_cost_span_else_case(op->else_case);
                 stream << open_expand_button(id);
 
                 // for line numbers
@@ -1109,8 +1093,9 @@ private:
                 string anchorName = "if" + std::to_string(ifCount);
                 stream << open_anchor(anchorName);
 
-                stream << keyword("else");
+                stream << keyword("else ");
                 stream << close_expand_button() << "{";
+                stream << close_cost_span();
                 close_anchor();
                 stream << see_viz_button(anchorName);
 
@@ -1129,13 +1114,9 @@ private:
 
     void visit(const Evaluate *op) override {
         stream << open_div("Evaluate");
-        stream << open_cost_span(op, get_stmt_hierarchy(op));
+        stream << open_cost_span(op);
         print(op->value);
         stream << close_cost_span();
-
-        if (!in_context && in_loop) {
-            add_context_rule(curr_line_num);
-        }
 
         stream << close_div();
     }
@@ -1218,26 +1199,6 @@ public:
 
         stream << prodConsHTML;
     }
-    void generate_dependency_graph(const Module &m) {
-
-        string dependGraphHTML = dependencyGraph.generate_dependency_graph(m);
-        if (PRINT_DEPENDENCIES) cout << dependGraphHTML << endl;
-
-        // stream << dependGraphHTML;
-        stream << "In construction...\n";
-    }
-    void generate_dependency_graph(const Stmt &s) {
-        internal_error << "\n"
-                       << "\n"
-                       << "StmtToViz::generate_dependency_graph(const Stmt &s): Not implemented"
-                       << "\n\n";
-
-        // TODO: fill this in
-
-        // Stmt inlined_s = substitute_in_all_lets(s);
-        // string dependGraphHTML = dependencyGraph.generate_dependency_graph(inlined_s);
-        string dependGraphHTML = dependencyGraph.generate_dependency_graph(s);
-    }
 
     void print(const Expr &ir) {
         // debug(0) << "entering: " << ir << "\n";
@@ -1284,8 +1245,6 @@ public:
 
         stream << open_div("FunctionBody Indent", id);
 
-        // Stmt inlined_body = substitute_in_all_lets(op.body);
-        // print(inlined_body);
         print(op.body);
 
         stream << close_div();
@@ -1572,7 +1531,8 @@ public:
 
         // hierarchy links
         stream << "<!-- Hierarchy links -->\n";
-        stream << "<link rel='stylesheet' href='https://unpkg.com/treeflex/dist/css/treeflex.css'>";
+        stream
+            << "<link rel='stylesheet' href='https://unpkg.com/treeflex/dist/css/treeflex.css'>\n";
         stream << "\n";
 
         // expand button links
@@ -1598,7 +1558,9 @@ public:
     }
 
     void end_stream() {
+        stream << "<div class='popups'>\n";
         stream << popups;
+        stream << "</div>\n";
 
         stream << "<script>\n";
         stream << "$( '.Matched' ).each( function() {\n"
@@ -1608,7 +1570,6 @@ public:
                   "'-]').removeClass('Highlight'); }\n"
                << "} );\n";
 
-        stream << content_rule_script_stream;
         stream << generatetooltipJS(tooltipCount);
         stream << getStmtHierarchy.generate_collapse_expand_js();
         stream << getStmtHierarchy.generate_stmtHierarchy_js();
@@ -1616,58 +1577,250 @@ public:
         stream << ProducerConsumerHierarchy::scrollToFunctionJSVizToCode;
         stream << scrollToFunctionJSCodeToViz;
         stream << expandCodeJS;
+        stream << assemblyCodeJS;
         stream << "</script>\n";
         stream << "</body>";
+    }
+
+    string informationPopup() {
+
+        stringstream popup;
+
+        popupCount++;
+        popup << "<div class='modal fade' id='stmtHierarchyModal" << popupCount;
+        popup << "' tabindex='-1'\n";
+        popup << "    aria-labelledby='stmtHierarchyModalLabel' aria-hidden='true'>\n";
+        popup << "    <div class='modal-dialog modal-dialog-scrollable modal-xl'>\n";
+        popup << "        <div class='modal-content'>\n";
+        popup << "            <div class='modal-header'>\n";
+        popup << "                <h5 class='modal-title' id='stmtHierarchyModalLabel'>How to read "
+                 "this document\n";
+        popup << "                </h5>\n";
+        popup << "                <button type='button' class='btn-close'\n";
+        popup << "                    data-bs-dismiss='modal' aria-label='Close'></button>\n";
+        popup << "            </div>\n";
+        popup << "            <div class='modal-body'>\n";
+        popup << "<p style='font-size: 20px;'><b\n";
+        popup << "        style='font-weight: bold;'>Two Columns</b>\n";
+        popup << "</p>\n";
+        popup << "<p>There are 2 columns on this page:</p>\n";
+        popup << "<ul>\n";
+        popup << "    <li><b style='font-weight: bold;'>Left side:</b>\n";
+        popup << "        Halide Intermediate Representation (IR) - the\n";
+        popup << "        code that\n";
+        popup << "        Halide generates.</li>\n";
+        popup << "    <li><b style='font-weight: bold;'>Right side:</b>\n";
+        popup << "        Visualization - represents, at\n";
+        popup << "        a high level, the structure of the IR.</li>\n";
+        popup << "</ul>\n";
+        popup << "<p>You can adjust the size of the columns using the\n";
+        popup << "    green resize bar in the middle of the 2. The buttons\n";
+        popup << "    in the middle of this bar will also expand either\n";
+        popup << "    left or right column completely.</p>\n";
+        popup << "<p style='font-size: 20px;'><b\n";
+        popup << "        style='font-weight: bold;'>Left Column\n";
+        popup << "        Functionality</b>\n";
+        popup << "</p>\n";
+        popup << "<p>Here are the different features of the left column:\n";
+        popup << "</p>\n";
+        popup << "<ul>\n";
+
+        tooltipCount++;
+        popup << "<span id='tooltip" << tooltipCount << "' class='tooltip CostTooltip' ";
+        popup << "role='tooltip" << tooltipCount << "'>";
+        popup << "Costs will be shown here. Click to see statement hierarchy.";
+        popup << "</span>";
+
+        popup << "    <li><button id='button" << tooltipCount << "' aria-describedby='tooltip"
+              << tooltipCount << "'\n";
+        popup << "            class='colorButton CostColor0' role='button'\n";
+        popup << "            inclusiverange='0'\n";
+        popup << "            exclusiverange='0'></button>";
+        popup << "<b\n";
+        popup << "            style='font-weight: bold;'>Cost\n";
+        popup << "            Colors:</b>\n";
+        popup << "            Next to every line, there are 2 buttons that are\n";
+        popup << "            colored based on the cost of the line.\n";
+        popup << "            Hovering over them will give more information\n";
+        popup << "            about the cost of that line. If you click on the\n";
+        popup << "            button, a hierarchy of that line will appear,\n";
+        popup << "            which you can explore to see the contents of the\n";
+        popup << "            line. There are 2 buttons because they each\n";
+        popup << "            represent a different type of color:\n";
+        popup << "            <ul>\n";
+        popup << "                <li><b style='font-weight: bold;'>Computation\n";
+        popup << "                        Cost:</b> This is the cost\n";
+        popup << "                    associated with how much computation\n";
+        popup << "                    went\n";
+        popup << "                    into that line of code.</li>\n";
+        popup << "                <li><b style='font-weight: bold;'>Data\n";
+        popup << "                        Movement Cost:</b> This is the\n";
+        popup << "                    cost associated with how much data was\n";
+        popup << "                    moved\n";
+        popup << "                    around in that line of code\n";
+        popup << "                    (read/written).</li>\n";
+        popup << "            </ul>\n";
+        popup << "    </li>\n";
+        popup << "    <br>\n";
+        popup << "    <li>\n";
+        popup << "        <button class='iconButton'><i\n";
+        popup << "                class='bi bi-arrow-right-square'></i></button><b\n";
+        popup << "        style='font-weight: bold;'>See\n";
+        popup << "            Visualization:</b>\n";
+        popup << "        If you click this button, the right column will\n";
+        popup << "        scroll to the related block of that line of\n";
+        popup << "        code.\n";
+        popup << "    </li>\n";
+        popup << "    <li>\n";
+        popup << "        <button class='iconButton assemblyIcon'>";
+        popup
+            << "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' "
+               "class='bi bi-filetype-raw' viewBox='0 0 16 16'> <path fill-rule='evenodd' d='M14 "
+               "4.5V14a2 2 0 0 1-2 2v-1a1 1 0 0 0 1-1V4.5h-2A1.5 "
+               "1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v9H2V2a2 2 0 0 1 2-2h5.5L14 4.5ZM1.597 "
+               "11.85H0v3.999h.782v-1.491h.71l.7 1.491h1.651l.313-1.028h1.336l.314 1.028h.84L5.31 "
+               "11.85h-.925l-1.329 3.96-.783-1.572A1.18 1.18 0 0 0 3 "
+               "13.116c0-.256-.056-.479-.167-.668a1.098 1.098 0 0 0-.478-.44 1.669 1.669 0 0 "
+               "0-.758-.158Zm-.815 1.913v-1.292h.7a.74.74 0 0 1 .507.17c.13.113.194.276.194.49 0 "
+               ".21-.065.368-.194.474-.127.105-.3.158-.518.158H.782Zm4.063-1.148.489 "
+               "1.617H4.32l.49-1.617h.035Zm4.006.445-.74 2.789h-.73L6.326 11.85h.855l.601 "
+               "2.903h.038l.706-2.903h.683l.706 2.903h.04l.596-2.903h.858l-1.055 "
+               "3.999h-.73l-.74-2.789H8.85Z'/></svg>";
+        popup << "</button><b \n";
+        popup << "        style='font-weight: bold;'>See Assembly:</b>\n";
+        popup << "        If you click this button, a new tab will open\n";
+        popup << "        with the assembly scrolled to the related\n";
+        popup << "        assembly instruction of that line of code.\n";
+        popup << "    </li>\n";
+        popup << "</ul>\n";
+        popup << "<p style='font-size: 20px;'><b\n";
+        popup << "        style='font-weight: bold;'>Right Column\n";
+        popup << "        Functionality</b>\n";
+        popup << "</p>\n";
+        popup << "<p>Here are the different features of the right column:\n";
+        popup << "</p>\n";
+        popup << "<ul>\n";
+
+        tooltipCount++;
+        popup << "<span id='tooltip" << tooltipCount << "' class='tooltip' ";
+        popup << "role='tooltip" << tooltipCount << "'>";
+        popup << "Costs will be shown here.";
+        popup << "</span>";
+
+        popup << "    <li><button id='button" << tooltipCount << "' aria-describedby='tooltip"
+              << tooltipCount << "'\n";
+        popup << "            class='colorButton CostColor0' role='button'\n";
+        popup << "            inclusiverange='0'\n";
+        popup << "            exclusiverange='0'></button><b ";
+        popup << "    style='font-weight: bold;'>Cost Colors:</b>\n";
+        popup << "        Cost colors on the right work the same way as\n";
+        popup << "        they do on the left - hovering over them will give\n";
+        popup << "        information about the cost.\n";
+        popup << "    </li>\n";
+        popup << "    <li>\n";
+        popup << "        <button class='iconButton'><i\n";
+        popup << "                class='bi bi-code-square'></i></button><b\n";
+        popup << "        style='font-weight: bold;'>See\n";
+        popup << "            Code:</b>\n";
+        popup << "        If you click this button, the left column will\n";
+        popup << "        scroll to the related line of code of that block\n";
+        popup << "        in the visualization.\n";
+        popup << "    </li>\n";
+        popup << "    <li>\n";
+
+        tooltipCount++;
+        popup << "<span id='tooltip" << tooltipCount << "' class='tooltip' ";
+        popup << "role='tooltip" << tooltipCount << "'>";
+        popup << "More information about the node will appear here.";
+        popup << "</span>";
+
+        popup << "        <button class='info-button' id='button" << tooltipCount
+              << "' aria-describedby='tooltip" << tooltipCount << "'><i\n";
+        popup << "                class='bi bi-info'></i></button><b \n";
+        popup << "        style='font-weight: bold;'>Info Button:</b>\n";
+        popup << "        If you hover over these buttons, they will\n";
+        popup << "        offer more information about that block (eg.\n";
+        popup << "        load/store size, allocation type, etc.)\n";
+        popup << "    </li>\n";
+        popup << "</ul>        \n";
+        popup << "            </div>\n";
+        popup << "        </div>\n";
+        popup << "    </div>\n";
+        popup << "</div>\n";
+
+        return popup.str();
+    }
+
+    void informationBar(const Module &m) {
+        popups += informationPopup();
+
+        stream << "<div class='informationBar'>\n";
+        stream << "<div class='title'>\n";
+        stream << "<h3>" << m.name() << "</h3>\n";
+        stream << "</div>\n";
+        stream << "<div class='spacing'></div>\n";
+        stream << "<div class='button'>\n";
+        stream << "<h3><button class='informationBarButton'><i\n";
+        stream << "class='bi bi-info-square' data-bs-toggle='modal'\n";
+        stream << "data-bs-target='#stmtHierarchyModal" << popupCount << "'></i></button>\n";
+        stream << "</h3>\n";
+        stream << "</div>\n";
+        stream << "</div>\n";
     }
 
     void resizeBar() {
         stream << "<div class='ResizeBar' id='ResizeBar'>\n";
         stream << "<div class='collapseButtons'>\n";
-        stream << "<button class='icon-button' onclick='collapseViz()'>";
+        stream << "<button class='iconButton' onclick='collapseViz()'>";
         stream << "<i class='bi bi-arrow-bar-right'></i></button>\n";
-        stream << "<button class='icon-button' onclick='collapseCode()'>";
+        stream << "<button class='iconButton' onclick='collapseCode()'>";
         stream << "<i class='bi bi-arrow-bar-left'></i></button>\n";
         stream << "</div>\n";
         stream << "</div>\n";
     }
 
     void generate_html(const string &filename, const Module &m) {
+        getAssemblyInfoViz.generate_assembly_information(m, filename);
+
         // opening parts of the html
         start_stream(filename);
 
         stream << "<div class='outerDiv'>\n";
+
+        informationBar(m);
 
         stream << "<div class='mainContent'>\n";
 
         // print main html page
         stream << "<div class='IRCode-code' id='IRCode-code'>\n";
         print(m);
-        stream << "</div>\n";  // close IRCode-code div
+        stream << "</div>\n";
 
         // for resizing the code and visualization divs
         resizeBar();
 
         stream << "<div class='ProducerConsumerViz' id='ProducerConsumerViz'>\n";
         generate_producer_consumer_hierarchy(m);
-        stream << "</div>\n";  // close ProducerConsumerViz div
+        stream << "</div>\n";
 
         stream << "</div>\n";  // close mainContent div
         stream << "</div>\n";  // close outerDiv div
+
+        // put assembly code in a div
+        stream << getAssemblyInfoViz.get_assembly_html();
 
         // closing parts of the html
         end_stream();
     }
 
     StmtToViz(const string &filename, const Module &m)
-        : getStmtHierarchy(generate_costs(m)),
-          producerConsumerHierarchy(get_file_name(filename), findStmtCost), id_count(0),
-          in_loop(false), context_stack(1, 0) {
+        : id_count(0), getStmtHierarchy(generate_costs(m)), producerConsumerHierarchy(findStmtCost),
+          context_stack(1, 0) {
     }
 
     StmtToViz(const string &filename, const Stmt &s)
-        : getStmtHierarchy(generate_costs(s)),
-          producerConsumerHierarchy(get_file_name(filename), findStmtCost), id_count(0),
-          in_loop(false), context_stack(1, 0) {
+        : id_count(0), getStmtHierarchy(generate_costs(s)), producerConsumerHierarchy(findStmtCost),
+          context_stack(1, 0) {
     }
 
     string generatetooltipJS(int &tooltipCount) {
@@ -1705,8 +1858,8 @@ public:
         tooltipJS << "    tooltipElement.style.opacity = '0'; \n";
         tooltipJS << "} \n";
         tooltipJS << "for (let i = 1; i <= " << tooltipCount << "; i++) { \n";
-        tooltipJS << "    const button = document.querySelector('#button' + i); \n";
-        tooltipJS << "    const tooltip = document.querySelector('#tooltip' + i); \n";
+        tooltipJS << "    const button = document.getElementById('button' + i); \n";
+        tooltipJS << "    const tooltip = document.getElementById('tooltip' + i); \n";
         tooltipJS << "    button.addEventListener('mouseenter', () => { \n";
         tooltipJS << "        showTooltip(button, tooltip); \n";
         tooltipJS << "    }); \n";
@@ -1773,11 +1926,15 @@ div.outerDiv { \n \
     display: flex; \n \
     flex-direction: column; \n \
 } \n \
+div.informationBar { \n \
+    display: flex; \n \
+} \n \
 div.mainContent { \n \
     display: flex; \n \
     flex-grow: 1; \n \
     width: 100%; \n \
     overflow: hidden; \n \
+    border-top: 1px solid rgb(200,200,200) \n \
 } \n \
 div.IRCode-code { \n \
     counter-reset: line; \n \
@@ -1805,6 +1962,20 @@ div.collapseButtons { \n \
 ";
 
 const string StmtToViz::scrollToFunctionJSCodeToViz = "\n \
+// scroll to function - code to viz \n \
+function makeVisibleViz(element) { \n \
+    if (!element) return; \n \
+    if (element.className == 'mainContent') return; \n \
+    if (element.style.visibility == 'hidden') { \n \
+        element.style = ''; \n \
+        show = document.getElementById(element.id + '-show'); \n \
+        hide = document.getElementById(element.id + '-hide'); \n \
+        show.style.display = 'none'; \n \
+        hide.style.display = 'block'; \n \
+        return; \n \
+    } \n \
+    makeVisibleViz(element.parentNode); \n \
+} \n \
 function getOffsetTop(element) { \n \
     if (!element) return 0; \n \
     if (element.id == 'ProducerConsumerViz') return 0; \n \
@@ -1818,6 +1989,7 @@ function getOffsetLeft(element) { \n \
 function scrollToFunctionCodeToViz(id) { \n \
     var container = document.getElementById('ProducerConsumerViz'); \n \
     var scrollToObject = document.getElementById(id); \n \
+    makeVisibleViz(scrollToObject); \n \
     container.scrollTo({ \n \
         top: getOffsetTop(scrollToObject) - 20, \n \
         left: getOffsetLeft(scrollToObject) - 40, \n \
@@ -1925,25 +2097,13 @@ span.ButtonSpacer { width: 5px; color: transparent; display: inline-block; }\n \
     width: 5px; \n \
     margin-right: 2px; \n \
     border: 1px solid rgba(0, 0, 0, 0); \n \
+    vertical-align: middle; \n \
+    border-radius: 2px; \n \
 } \n \
 .colorButton:hover { \n \
     border: 1px solid grey; \n \
 } \n \
-.ContextButton { \n \
-    height: 15px; \n \
-    width: 5px; \n \
-    border: 1px solid rgba(0, 0, 0, 0); \n \
-    background: transparent; \n \
-    margin-right: 2px; \n \
-} \n \
-.hoverContextButton { \n \
-    background: rgb(133, 133, 233); \n \
-} \n \
-.hoverContextButton:hover { \n \
-    border: 1px solid black; \n \
-    background: rgb(93, 93, 224); \n \
-} \n \
-.icon-button { \n \
+.iconButton { \n \
     border: 0px; \n \
     background: transparent; \n \
     font-size: 20px; \n \
@@ -1952,8 +2112,25 @@ span.ButtonSpacer { width: 5px; color: transparent; display: inline-block; }\n \
     margin-right: 5px; \n \
     margin-left: 5px; \n \
 } \n \
-.icon-button:hover { \n \
+.iconButton:hover { \n \
     color: blue; \n \
+} \n \
+.assemblyIcon { \n \
+    color: red; \n \
+} \n \
+.informationBarButton { \n \
+    border: 0px; \n \
+    background: transparent; \n \
+    display: inline-block; \n \
+    vertical-align: middle; \n \
+    margin-right: 5px; \n \
+    margin-top: 5px; \n \
+} \n \
+.informationBarButton:hover { \n \
+    color: blue; \n \
+} \n \
+.assemblyIcon { \n \
+    color: red; \n \
 } \n \
 ";
 
@@ -1982,8 +2159,8 @@ span.CostColor0, div.CostColor0, .CostColor0 { background-color: rgb(236,233,89)
 span.CostColorSpacer { width: 2px; color: transparent; display: inline-block; }\n \
 span.CostComputation { width: 13px; display: inline-block; color: transparent; } \n \
 span.CostMovement { width: 13px; display: inline-block;  color: transparent; } \n \
-span.smallColorIndent { position: absolute; left: 30px; } \n \
-span.bigColorIndent { position: absolute; left: 60px; } \n \
+span.smallColorIndent { position: absolute; left: 35px; } \n \
+span.bigColorIndent { position: absolute; left: 65px; } \n \
 ";
 
 const string StmtToViz::tooltipCSS = "\n \
@@ -2004,7 +2181,9 @@ const string StmtToViz::tooltipCSS = "\n \
     border: 1px dashed #aaa; \n \
     z-index: 9999; \n \
     box-shadow: rgba(100, 100, 100, 0.8) 0 2px 5px 0; \n \
-    width: 160px; \n \
+} \n \
+.CostTooltip { \n \
+    width: 240px; \n \
 } \n \
 .conditionTooltip { \n \
     width: 300px; \n \
@@ -2012,7 +2191,7 @@ const string StmtToViz::tooltipCSS = "\n \
     font-family: Consolas, 'Liberation Mono', Menlo, Courier, monospace; \n \
 } \n \
 span.tooltipHelperText { \n \
-    color: grey; \n \
+    color: red; \n \
     margin-top: 5px; \n \
 } \n \
 ";
@@ -2037,42 +2216,116 @@ resizeBar.addEventListener('mousedown', (event) => { \n \
     }, false); \n \
 }); \n \
 function resize(e) { \n \
+    if (e.x < 25) { \n \
+        collapseCode(); \n \
+        return; \n \
+    } \n \
     const size = `${e.x}px`; \n \
+    codeDiv.style.display = 'block'; \n \
+    prodConsDiv.style.display = 'block'; \n \
     codeDiv.style.flexBasis = 'calc(' + size + ' - 24px)'; \n \
     prodConsDiv.style.flexBasis = 'calc(100% - ' + size + ' + 8px)'; \n \
 } \n \
 function collapseCode() { \n \
-    codeDiv.style.flexBasis = '0px'; \n \
+    codeDiv.style.display = 'none'; \n \
+    prodConsDiv.style.display = 'block'; \n \
     prodConsDiv.style.flexBasis = 'calc(100%)'; \n \
 } \n \
 function collapseViz() { \n \
-    prodConsDiv.style.flexBasis = '0px'; \n \
+    prodConsDiv.style.display = 'none'; \n \
+    codeDiv.style.display = 'block'; \n \
     codeDiv.style.flexBasis = 'calc(100% - 16px)'; \n \
 } \n \
 ";
 
+const string StmtToViz::assemblyCodeJS = "\n \
+// open assembly code  \n \
+function openAssembly(lineNum) {\n \
+    var innerHTML = '<head><link rel=\\'stylesheet\\'' +\n \
+        'href=\\'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.52.2/codemirror.min.css\\'>' +\n \
+        '</link>' +\n \
+        '<scr' + 'ipt' +\n \
+        '	src=\\'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.52.2/codemirror.min.js\\'></scr' + 'ipt>' +\n \
+        '<scri' + 'pt' +\n \
+        '	src=\\'https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/z80/z80.min.js\\'></scr' + 'ipt>' +\n \
+        '<scri' + 'pt' +\n \
+        '	src=\\'https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/selection/mark-selection.min.js\\'></scri' + 'pt>' +\n \
+        '<scri' + 'pt src=\\'https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/search/searchcursor.min.js\\'></scri' + 'pt>' + \n \
+        '<scr' + 'ipt src=\\'https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/addon/search/search.min.js\\'></scri' + 'pt>' + \n \
+        '</head>';\n \
+\n \
+    innerHTML += '<style>' +\n \
+        '    .CodeMirror {' +\n \
+        '        height: 100%;' +\n \
+        '        width: 100%;' +\n \
+        '    }' +\n \
+        '    .styled-background {' +\n \
+        '        background-color: #ff7;' +\n \
+        '    }' +\n \
+        '</style>';\n \
+\n \
+    var assembly = document.getElementById('assemblyContent');\n \
+    console.log(assembly);\n \
+    innerHTML += '<div id=\\'codeValue\\' style=\\'display: none\\'>' + assembly.innerHTML + '</div>';\n \
+    innerHTML += '<scr' + 'ipt>' +\n \
+        'var codeHTML = document.getElementById(\\'codeValue\\'); ' +\n \
+        'var code = codeHTML.textContent; ' +\n \
+        'code = code.trimLeft(); ' +\n \
+        'var myCodeMirror = CodeMirror(document.body, {value: code, lineNumbers: true, mode: \\'z80\\', readOnly: true,});' +\n \
+        'function jumpToLine(i) {' +\n \
+        '	i -= 1;' +\n \
+        '	var t = myCodeMirror.charCoords({ line: i, ch: 0 }, \\'local\\').top;' +\n \
+        '	var middleHeight = myCodeMirror.getScrollerElement().offsetHeight / 2;' +\n \
+        '	myCodeMirror.scrollIntoView({ line: i+20, ch: 0 });' +\n \
+        '	myCodeMirror.markText({ line: i, ch: 0 }, { line: i, ch: 200 }, { className: \\'styled-background\\' });' +\n \
+        '}' +\n \
+        'jumpToLine('+lineNum+');' +\n \
+\n \
+        '</scri' + 'pt>';\n \
+\n \
+    var newWindow = window.open('', '_blank');\n \
+    newWindow.document.write(innerHTML);\n \
+}\n \
+";
+
 const string StmtToViz::js = "\n \
 /* Expand/Collapse buttons */\n \
-function toggle(id) { \n \
+function toggle(id, buttonId) { \n \
     e = document.getElementById(id); \n \
     show = document.getElementById(id + '-show'); \n \
     hide = document.getElementById(id + '-hide'); \n \
+    button1 = document.getElementById('button' + buttonId); \n \
+    button2 = document.getElementById('button' + (buttonId - 1)); \n \
     if (e.style.visibility != 'hidden') { \n \
         e.style.height = '0px'; \n \
         e.style.visibility = 'hidden'; \n \
         show.style.display = 'block'; \n \
         hide.style.display = 'none'; \n \
+        // make inclusive  \n \
+        if (button1 != null && button2 != null) { \n \
+            inclusiverange1 = button1.getAttribute('inclusiverange'); \n \
+            newClassName = button1.className.replace(/CostColor\\d+/, 'CostColor' + inclusiverange1); \n \
+            button1.className = newClassName; \n \
+            inclusiverange2 = button2.getAttribute('inclusiverange'); \n \
+            newClassName = button2.className.replace(/CostColor\\d+/, 'CostColor' + inclusiverange2); \n \
+            button2.className = newClassName; \n \
+        } \n \
     } else { \n \
         e.style = ''; \n \
         show.style.display = 'none'; \n \
         hide.style.display = 'block'; \n \
+        // make exclusive  \n \
+        if (button1 != null && button2 != null) { \n \
+            exclusiverange1 = button1.getAttribute('exclusiverange'); \n \
+            newClassName = button1.className.replace(/CostColor\\d+/, 'CostColor' + exclusiverange1); \n \
+            button1.className = newClassName; \n \
+            exclusiverange2 = button2.getAttribute('exclusiverange'); \n \
+            newClassName = button2.className.replace(/CostColor\\d+/, 'CostColor' + exclusiverange2); \n \
+            button2.className = newClassName; \n \
+        } \n \
     } \n \
     return false; \n \
-}\n \
-function openNewWindow(innerHtml) { \n \
-    var newWindow = window.open('', '_blank'); \n \
-    newWindow.document.write(innerHtml); \n \
-}\n \
+} \n \
 ";
 }  // namespace
 
