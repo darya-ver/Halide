@@ -60,7 +60,7 @@ private:
                                                           // statements
     ProducerConsumerHierarchy producerConsumerHierarchy;  // used for getting the hierarchy of
                                                           // producer/consumer
-    GetAssemblyInfoViz getAssemblyInfoViz;  // used for getting the assembly line numbers
+    //    GetAssemblyInfoViz getAssemblyInfoViz;  // used for getting the assembly line numbers
 
     int curr_line_num;  // for accessing div of that line
 
@@ -691,7 +691,7 @@ private:
         string anchorName = "producerConsumer" + std::to_string(producerConsumerCount);
 
         // for assembly
-        int assemblyLineNum = getAssemblyInfoViz.get_line_number(op);
+        //        int assemblyLineNum = getAssemblyInfoViz.get_line_number(op);
 
         int produce_id = unique_id();
 
@@ -705,7 +705,7 @@ private:
         stream << close_span();
         stream << close_cost_span();
         stream << close_anchor();
-        if (assemblyLineNum != -1) stream << see_assembly_button(assemblyLineNum);
+        //        if (assemblyLineNum != -1) stream << see_assembly_button(assemblyLineNum);
         stream << see_viz_button(anchorName);
 
         stream << open_div(op->is_producer ? "ProduceBody Indent" : "ConsumeBody Indent",
@@ -729,7 +729,7 @@ private:
         string anchorName = "for" + std::to_string(forCount);
 
         // for assembly
-        int assemblyLineNum = getAssemblyInfoViz.get_line_number(op);
+        //        int assemblyLineNum = getAssemblyInfoViz.get_line_number(op);
 
         int id = unique_id();
         stream << open_cost_span(op);
@@ -764,7 +764,7 @@ private:
         stream << " " << matched("{");
         stream << close_cost_span();
         stream << close_anchor();
-        if (assemblyLineNum != -1) stream << see_assembly_button(assemblyLineNum);
+        //        if (assemblyLineNum != -1) stream << see_assembly_button(assemblyLineNum);
         stream << see_viz_button(anchorName);
 
         stream << open_div("ForBody Indent", id);
@@ -1780,7 +1780,7 @@ public:
     }
 
     void generate_html(const string &filename, const Module &m) {
-        getAssemblyInfoViz.generate_assembly_information(m, filename);
+        //        getAssemblyInfoViz.generate_assembly_information(m, filename);
 
         // opening parts of the html
         start_stream(filename);
@@ -1807,7 +1807,7 @@ public:
         stream << "</div>\n";  // close outerDiv div
 
         // put assembly code in a div
-        stream << getAssemblyInfoViz.get_assembly_html();
+        //        stream << getAssemblyInfoViz.get_assembly_html();
 
         // closing parts of the html
         end_stream();
@@ -1824,60 +1824,60 @@ public:
     }
 
     string generatetooltipJS(int &tooltipCount) {
-        stringstream tooltipJS;
-        tooltipJS << "\n// Tooltip JS\n";
-        tooltipJS << "function update(buttonElement, tooltipElement) { \n";
-        tooltipJS << "    window.FloatingUIDOM.computePosition(buttonElement, tooltipElement, { \n";
-        tooltipJS << "        placement: 'top', \n";
-        tooltipJS << "        middleware: [ \n";
-        tooltipJS << "            window.FloatingUIDOM.offset(6), \n";
-        tooltipJS << "            window.FloatingUIDOM.flip(), \n";
-        tooltipJS << "            window.FloatingUIDOM.shift({ padding: 5 }), \n";
-        tooltipJS << "        ], \n";
-        tooltipJS << "    }).then(({ x, y, placement, middlewareData }) => { \n";
-        tooltipJS << "        Object.assign(tooltipElement.style, { \n";
-        tooltipJS << "            left: `${x}px`, \n";
-        tooltipJS << "            top: `${y}px`, \n";
-        tooltipJS << "        }); \n";
-        tooltipJS << "        // Accessing the data \n";
-        tooltipJS << "        const staticSide = { \n";
-        tooltipJS << "            top: 'bottom', \n";
-        tooltipJS << "            right: 'left', \n";
-        tooltipJS << "            bottom: 'top', \n";
-        tooltipJS << "            left: 'right', \n";
-        tooltipJS << "        }[placement.split('-')[0]]; \n";
-        tooltipJS << "    }); \n";
-        tooltipJS << "} \n";
-        tooltipJS << "function showTooltip(buttonElement, tooltipElement) { \n";
-        tooltipJS << "    tooltipElement.style.display = 'block'; \n";
-        tooltipJS << "    tooltipElement.style.opacity = '1'; \n";
-        tooltipJS << "    update(buttonElement, tooltipElement); \n";
-        tooltipJS << "} \n";
-        tooltipJS << "function hideTooltip(tooltipElement) { \n";
-        tooltipJS << "    tooltipElement.style.display = ''; \n";
-        tooltipJS << "    tooltipElement.style.opacity = '0'; \n";
-        tooltipJS << "} \n";
-        tooltipJS << "for (let i = 1; i <= " << tooltipCount << "; i++) { \n";
-        tooltipJS << "    const button = document.getElementById('button' + i); \n";
-        tooltipJS << "    const tooltip = document.getElementById('tooltip' + i); \n";
-        tooltipJS << "    button.addEventListener('mouseenter', () => { \n";
-        tooltipJS << "        showTooltip(button, tooltip); \n";
-        tooltipJS << "    }); \n";
-        tooltipJS << "    button.addEventListener('mouseleave', () => { \n";
-        tooltipJS << "        hideTooltip(tooltip); \n";
-        tooltipJS << "    } \n";
-        tooltipJS << "    ); \n";
-        tooltipJS << "    tooltip.addEventListener('focus', () => { \n";
-        tooltipJS << "        showTooltip(button, tooltip); \n";
-        tooltipJS << "    } \n";
-        tooltipJS << "    ); \n";
-        tooltipJS << "    tooltip.addEventListener('blur', () => { \n";
-        tooltipJS << "        hideTooltip(tooltip); \n";
-        tooltipJS << "    } \n";
-        tooltipJS << "    ); \n";
-        tooltipJS << "} \n";
+        string tooltipJS;
+        tooltipJS += "\n// Tooltip JS\n";
+        tooltipJS += "function update(buttonElement, tooltipElement) { \n";
+        tooltipJS += "    window.FloatingUIDOM.computePosition(buttonElement, tooltipElement, { \n";
+        tooltipJS += "        placement: 'top', \n";
+        tooltipJS += "        middleware: [ \n";
+        tooltipJS += "            window.FloatingUIDOM.offset(6), \n";
+        tooltipJS += "            window.FloatingUIDOM.flip(), \n";
+        tooltipJS += "            window.FloatingUIDOM.shift({ padding: 5 }), \n";
+        tooltipJS += "        ], \n";
+        tooltipJS += "    }).then(({ x, y, placement, middlewareData }) => { \n";
+        tooltipJS += "        Object.assign(tooltipElement.style, { \n";
+        tooltipJS += "            left: `${x}px`, \n";
+        tooltipJS += "            top: `${y}px`, \n";
+        tooltipJS += "        }); \n";
+        tooltipJS += "        // Accessing the data \n";
+        tooltipJS += "        const staticSide = { \n";
+        tooltipJS += "            top: 'bottom', \n";
+        tooltipJS += "            right: 'left', \n";
+        tooltipJS += "            bottom: 'top', \n";
+        tooltipJS += "            left: 'right', \n";
+        tooltipJS += "        }[placement.split('-')[0]]; \n";
+        tooltipJS += "    }); \n";
+        tooltipJS += "} \n";
+        tooltipJS += "function showTooltip(buttonElement, tooltipElement) { \n";
+        tooltipJS += "    tooltipElement.style.display = 'block'; \n";
+        tooltipJS += "    tooltipElement.style.opacity = '1'; \n";
+        tooltipJS += "    update(buttonElement, tooltipElement); \n";
+        tooltipJS += "} \n";
+        tooltipJS += "function hideTooltip(tooltipElement) { \n";
+        tooltipJS += "    tooltipElement.style.display = ''; \n";
+        tooltipJS += "    tooltipElement.style.opacity = '0'; \n";
+        tooltipJS += "} \n";
+        tooltipJS += "for (let i = 1; i <= " + std::to_string(tooltipCount) + "; i++) { \n";
+        tooltipJS += "    const button = document.getElementById('button' + i); \n";
+        tooltipJS += "    const tooltip = document.getElementById('tooltip' + i); \n";
+        tooltipJS += "    button.addEventListener('mouseenter', () => { \n";
+        tooltipJS += "        showTooltip(button, tooltip); \n";
+        tooltipJS += "    }); \n";
+        tooltipJS += "    button.addEventListener('mouseleave', () => { \n";
+        tooltipJS += "        hideTooltip(tooltip); \n";
+        tooltipJS += "    } \n";
+        tooltipJS += "    ); \n";
+        tooltipJS += "    tooltip.addEventListener('focus', () => { \n";
+        tooltipJS += "        showTooltip(button, tooltip); \n";
+        tooltipJS += "    } \n";
+        tooltipJS += "    ); \n";
+        tooltipJS += "    tooltip.addEventListener('blur', () => { \n";
+        tooltipJS += "        hideTooltip(tooltip); \n";
+        tooltipJS += "    } \n";
+        tooltipJS += "    ); \n";
+        tooltipJS += "} \n";
 
-        return tooltipJS.str();
+        return tooltipJS;
     }
 };
 

@@ -274,15 +274,15 @@ vector<string> ProducerConsumerHierarchy::get_allocation_sizes(const Allocate *o
     vector<string> sizes;
 
     string type;
-    type += "<span class='stringType'>" + to_string(op->type) + "</span>";
+    type += "<span class='stringType'>" + to_string_e(op->type) + "</span>";
     sizes.push_back(type);
 
     for (const auto &extent : op->extents) {
         string ss;
         if (extent.as<IntImm>()) {
-            ss += "<span class='intType'>" + to_string(extent) + "</span>";
+            ss += "<span class='intType'>" + to_string_e(extent) + "</span>";
         } else {
-            ss += "<span class='stringType'>" + to_string(extent) + "</span>";
+            ss += "<span class='stringType'>" + to_string_e(extent) + "</span>";
         }
 
         sizes.push_back(ss);
@@ -534,6 +534,7 @@ void ProducerConsumerHierarchy::generate_computation_cost_div(const IRNode *op) 
     html += "<span id='prodConsTooltip" + std::to_string(prodConsTooltipCount) +
             "' class='tooltip CostTooltip' ";
     html += "role='prodConsTooltip" + std::to_string(prodConsTooltipCount) + "'>";
+//    cout << "\nhtml: " << html << endl;
     html += tooltipText;
     html += "</span>";
 
@@ -552,7 +553,14 @@ void ProducerConsumerHierarchy::generate_memory_cost_div(const IRNode *op) {
     prodConsTooltipCount++;
 
     string tooltipText = findStmtCost.generate_data_movement_cost_tooltip(op, true, "");
-    string className = "memory-cost-div CostColor" + to_string_e(data_movement_range);
+
+    // tooltip span
+    html += "<span id='prodConsTooltip" + std::to_string(prodConsTooltipCount) +
+            "' class='tooltip CostTooltip' ";
+    html += "role='prodConsTooltip" + std::to_string(prodConsTooltipCount) + "'>";
+    html += tooltipText;
+    html += "</span>";
+
     int data_movement_range = findStmtCost.get_data_movement_color_range(op, true);
     string className = "memory-cost-div CostColor" + to_string(data_movement_range);
     html += "<div id='prodConsButton" + std::to_string(prodConsTooltipCount) + "' ";
@@ -974,21 +982,21 @@ void ProducerConsumerHierarchy::visit(const Allocate *op) {
     tableRows.push_back({"Memory Type", get_memory_type(op->memory_type)});
 
     if (!is_const_one(op->condition)) {
-        tableRows.push_back({"Condition", to_string(op->condition)});
+        tableRows.push_back({"Condition", to_string_e(op->condition)});
     }
     if (op->new_expr.defined()) {
         internal_error << "\n"
                        << "ProducerConsumerHierarchy: Allocate " << op->name
                        << " `op->new_expr.defined()` is not supported.\n\n";
 
-        tableRows.push_back({"New Expr", to_string(op->new_expr)});
+        tableRows.push_back({"New Expr", to_string_e(op->new_expr)});
     }
     if (!op->free_function.empty()) {
         internal_error << "\n"
                        << "ProducerConsumerHierarchy: Allocate " << op->name
                        << " `!op->free_function.empty()` is not supported.\n\n";
 
-        tableRows.push_back({"Free Function", to_string(op->free_function)});
+        tableRows.push_back({"Free Function", to_string_e(op->free_function)});
     }
 
     tableRows.push_back({"Bit Size", to_string(op->type.bits())});
