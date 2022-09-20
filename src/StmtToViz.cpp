@@ -1096,10 +1096,10 @@ private:
                 stream << keyword("else ");
                 stream << close_expand_button() << "{";
                 stream << close_cost_span();
-                close_anchor();
+                stream << close_anchor();
                 stream << see_viz_button(anchorName);
 
-                stream << close_span();
+//                stream << close_span();
                 stream << open_div("ElseBody Indent", id);
                 print(op->else_case);
                 stream << close_div();
