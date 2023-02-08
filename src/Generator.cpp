@@ -702,7 +702,7 @@ gengen
  -e  A comma separated list of files to emit. Accepted values are:
      [assembly, bitcode, c_header, c_source, cpp_stub, featurization,
       llvm_assembly, object, python_extension, pytorch_wrapper, registration,
-      schedule, static_library, stmt, stmt_html, compiler_log].
+      schedule, static_library, stmt, stmt_html, stmt_viz, compiler_log].
      If omitted, default value is [c_header, static_library, registration].
 
  -p  A comma-separated list of shared libraries that will be loaded before the
@@ -850,6 +850,13 @@ gengen
             output_types.insert(OutputFileType::registration);
             output_types.insert(OutputFileType::static_library);
         } else {
+            // if emit_flags contains "stmt_viz" but not "assembly", throw an error
+            bool has_stmt_viz = std::find(emit_flags.begin(), emit_flags.end(), "stmt_viz") != emit_flags.end();
+            bool has_assembly = std::find(emit_flags.begin(), emit_flags.end(), "assembly") != emit_flags.end();
+            
+            user_assert(!has_stmt_viz || has_assembly)
+                << "Output flag `stmt_viz` requires the `assembly` flag to also be set.";
+
             // Build a reverse lookup table. Allow some legacy aliases on the command line,
             // to allow legacy build systems to work more easily.
             std::map<std::string, OutputFileType> output_name_to_enum = {
@@ -1554,6 +1561,11 @@ void GeneratorBase::pre_schedule() {
 void GeneratorBase::post_schedule() {
 }
 
+void GeneratorBase::add_requirement(const Expr &condition, const std::vector<Expr> &error_args) {
+    internal_assert(!pipeline.defined());
+    requirements.push_back({condition, error_args});
+}
+
 Pipeline GeneratorBase::get_pipeline() {
     check_min_phase(GenerateCalled);
     if (!pipeline.defined()) {
@@ -1584,6 +1596,9 @@ Pipeline GeneratorBase::get_pipeline() {
             }
         }
         pipeline = Pipeline(funcs);
+        for (const auto &r : requirements) {
+            pipeline.add_requirement(r.condition, r.error_args);
+        }
     }
     return pipeline;
 }

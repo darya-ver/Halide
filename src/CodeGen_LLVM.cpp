@@ -1881,7 +1881,13 @@ Value *CodeGen_LLVM::codegen_buffer_pointer(Value *base_address, Halide::Type ty
     // Promote index to 64-bit on targets that use 64-bit pointers.
     llvm::DataLayout d(module.get());
     if (d.getPointerSize() == 8) {
-        index = builder->CreateIntCast(index, i64_t, true);
+        llvm::Type *index_type = index->getType();
+        llvm::Type *desired_index_type = i64_t;
+        if (isa<VectorType>(index_type)) {
+            desired_index_type = VectorType::get(desired_index_type,
+                                                 dyn_cast<VectorType>(index_type)->getElementCount());
+        }
+        index = builder->CreateIntCast(index, desired_index_type, true);
     }
 
     return CreateInBoundsGEP(builder, load_type, base_address, index);
@@ -2758,6 +2764,8 @@ void CodeGen_LLVM::visit(const Call *op) {
 
             value = phi;
         }
+    } else if (op->is_intrinsic(Call::round)) {
+        value = codegen(lower_round_to_nearest_ties_to_even(op->args[0]));
     } else if (op->is_intrinsic(Call::require)) {
         internal_assert(op->args.size() == 3);
         Expr cond = op->args[0];
@@ -3556,11 +3564,13 @@ void CodeGen_LLVM::return_with_error_code(llvm::Value *error_code) {
 }
 
 void CodeGen_LLVM::visit(const ProducerConsumer *op) {
+    producer_consumer_count++;
+
     string name;
     if (op->is_producer) {
-        name = std::string("produce ") + op->name;
+        name = std::to_string(producer_consumer_count) + std::string("_produce ") + op->name;
     } else {
-        name = std::string("consume ") + op->name;
+        name = std::to_string(producer_consumer_count) + std::string("_consume ") + op->name;
     }
     BasicBlock *produce = BasicBlock::Create(*context, name, function);
     builder->CreateBr(produce);
@@ -3569,6 +3579,8 @@ void CodeGen_LLVM::visit(const ProducerConsumer *op) {
 }
 
 void CodeGen_LLVM::visit(const For *op) {
+    for_loop_count++;
+
     Value *min = codegen(op->min);
     Value *extent = codegen(op->extent);
     const Acquire *acquire = op->body.as<Acquire>();
@@ -3586,9 +3598,11 @@ void CodeGen_LLVM::visit(const For *op) {
         BasicBlock *preheader_bb = builder->GetInsertBlock();
 
         // Make a new basic block for the loop
-        BasicBlock *loop_bb = BasicBlock::Create(*context, std::string("for ") + op->name, function);
+        BasicBlock *loop_bb = BasicBlock::Create(
+            *context, std::to_string(for_loop_count) + std::string("_for ") + op->name, function);
         // Create the block that comes after the loop
-        BasicBlock *after_bb = BasicBlock::Create(*context, std::string("end for ") + op->name, function);
+        BasicBlock *after_bb = BasicBlock::Create(
+            *context, std::to_string(for_loop_count) + std::string("_end for ") + op->name, function);
 
         // If min < max, fall through to the loop bb
         Value *enter_condition = builder->CreateICmpSLT(min, max);
@@ -4528,7 +4542,9 @@ Value *CodeGen_LLVM::call_intrin(const llvm::Type *result_type, int intrin_lanes
                                  llvm::Function *intrin, vector<Value *> arg_values) {
     internal_assert(intrin);
     int arg_lanes = 1;
-    if (result_type->isVectorTy()) {
+    if (result_type->isVoidTy()) {
+        arg_lanes = intrin_lanes;
+    } else if (result_type->isVectorTy()) {
         arg_lanes = get_vector_num_elements(result_type);
     }
 
@@ -4912,6 +4928,10 @@ llvm::Type *CodeGen_LLVM::llvm_type_of(LLVMContext *c, Halide::Type t,
 llvm::Type *CodeGen_LLVM::get_vector_type(llvm::Type *t, int n,
                                           VectorTypeConstraint type_constraint) const {
     bool scalable;
+
+    if (t->isVoidTy()) {
+        return t;
+    }
 
     switch (type_constraint) {
     case VectorTypeConstraint::None:
